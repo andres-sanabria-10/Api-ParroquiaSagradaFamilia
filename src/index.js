@@ -11,22 +11,36 @@ require('./config/connect-db')
 
 app.set('PORT', process.env.PORT || 3000);
 
-// ✅ ACTUALIZADO: CORS configurado para cookies
+// ✅ CORS con función para desarrollo y producción
 app.use(cors({
-  origin: [
-    'https://localhost:3000',  // Tu frontend en desarrollo
-    'https://localhost:3001',  // Por si usas otro puerto
-    'https://tu-dominio-frontend.com' // Tu dominio en producción
-  ],
-  credentials: true, // 👈 IMPORTANTE: Permite enviar y recibir cookies
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization','Cookie']
+  origin: function (origin, callback) {
+    // Permitir requests sin origin (como Postman, apps móviles, etc.)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      // Agrega aquí tu dominio de producción cuando lo despliegues
+      // 'https://tu-frontend-produccion.com'
+    ];
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(null, true); // 👈 Durante desarrollo, permite todos los orígenes
+      // callback(new Error('Not allowed by CORS')); // 👈 Usa esto en producción
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
+  exposedHeaders: ['Set-Cookie']
 }));
 
 // Middlewares
 app.use(morgan('dev'))
 app.use(express.json())
-app.use(cookieParser()); // Usar cookie-parser
+app.use(cookieParser());
 
 // Routes
 app.use(require('./routes'))
