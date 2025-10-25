@@ -121,44 +121,43 @@ module.exports = {
     loginUser: async (req, res) => {
         try {
             const { mail, password } = req.body;
-
-            // Validación básica de entrada
+    
             if (!mail || !password) {
                 return res.status(400).json({ error: 'Email and password are required' });
             }
-
+    
             const user = await User.findOne({ mail });
-
+    
             if (!user) {
                 return res.status(404).json({ error: 'User not found' });
             }
-
+    
             const checkPassword = await compare(password, user.password);
-
+    
             if (!checkPassword) {
                 return res.status(401).json({ error: 'Invalid password' });
             }
-
+    
             // JWT 
             const tokenSession = await tokenSign(user);
-
-            // Establecer el token como una cookie HTTP-only
+    
+            // ✅ ACTUALIZADO: Cookie configurada para cross-origin
             res.cookie('jwt', tokenSession, {
                 httpOnly: true,
-                secure: process.env.NODE_ENV === 'production', // Usar secure en producción
-                sameSite: 'Lax',
-                maxAge: 3600000 // 1 hora, ajusta según necesidad
+                secure: true, // 👈 SIEMPRE true cuando el backend está en HTTPS (Render usa HTTPS)
+                sameSite: 'none', // 👈 Permite cookies entre dominios diferentes
+                maxAge: 3600000, // 1 hora
+                path: '/'
             });
-
-            // Omitir la contraseña en la respuesta
+    
             const userResponse = user.toObject();
             delete userResponse.password;
-
+    
             return res.status(200).json({
                 message: 'Login successful',
                 data: userResponse,
             });
-
+    
         } catch (err) {
             console.error('Login error:', err);
             return res.status(500).json({ error: 'Internal server error' });
@@ -168,11 +167,11 @@ module.exports = {
         try {
             res.clearCookie('jwt', {
                 httpOnly: true,
-                secure: process.env.NODE_ENV === 'production',
-                sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+                secure: true, // 👈 Debe coincidir con la configuración del login
+                sameSite: 'none', // 👈 Debe coincidir con la configuración del login
                 path: '/'
             });
-
+    
             return res.status(200).json({
                 message: 'Logout successful',
                 success: true
