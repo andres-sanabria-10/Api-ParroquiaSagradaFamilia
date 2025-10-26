@@ -15,12 +15,12 @@ const {
 router.post('/', checkAuth, createRequestDeparture);
 
 // ✅ Proteger rutas de administración
-router.post('/send/:requestId', checkAuth, checkRoleAuth(['Admin', 'SuperAdmin']), sendDepartureDocument);
+router.post('/send/:requestId', checkAuth, sendDepartureDocument);
 
-router.get('/Sent', checkAuth, checkRoleAuth(['Admin', 'SuperAdmin']), getAllRequestsSent);
+router.get('/Sent', checkAuth, getAllRequestsSent);
 
 router.get('/earring', getAllRequestsEarring);
 
-router.delete('/:id', checkAuth, checkRoleAuth(['Admin', 'SuperAdmin']), deleteRequestById);
+router.delete('/:id', checkAuth, deleteRequestById);
 
 module.exports = router;
