@@ -20,7 +20,7 @@ app.use(cors({
     const allowedOrigins = [
       'http://localhost:3000',
       'https://parroquiasagradafamilia.onrender.com',
-      'https://parroquiasagradafamilia-xbid.onrender.com',
+      'https://parroquiasagradafamilia-qqag.onrender.com',
       // Agrega aquí tu dominio de producción cuando lo despliegues
       // 'https://tu-frontend-produccion.com'
     ];
