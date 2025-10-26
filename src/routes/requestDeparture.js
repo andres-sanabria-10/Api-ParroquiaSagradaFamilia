@@ -19,7 +19,7 @@ router.post('/send/:requestId', checkAuth, checkRoleAuth(['Admin', 'SuperAdmin']
 
 router.get('/Sent', checkAuth, checkRoleAuth(['Admin', 'SuperAdmin']), getAllRequestsSent);
 
-router.get('/earring', checkAuth, checkRoleAuth(['Admin', 'SuperAdmin']), getAllRequestsEarring);
+router.get('/earring', getAllRequestsEarring);
 
 router.delete('/:id', checkAuth, checkRoleAuth(['Admin', 'SuperAdmin']), deleteRequestById);
 
