@@ -18,7 +18,7 @@ router.post('/', createBaptism);
 router.get('/', getAllBaptisms);
 
 // Ruta para obtener un bautismo por número de documento
-router.get('/:documentNumber', checkAuth, checkRoleAuth(["SuperAdmin", "Admin"]), getBaptismByDocumentNumber);
+router.get('/:documentNumber', getBaptismByDocumentNumber);
 
 // Ruta para actualizar un bautismo por número de documento
 router.put('/:documentNumber', updateBaptismByDocumentNumber);
