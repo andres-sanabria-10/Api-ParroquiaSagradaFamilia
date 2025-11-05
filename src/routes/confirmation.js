@@ -5,7 +5,8 @@ const {
   getAllConfirmations,
   getConfirmationByDocumentNumber,
   updateConfirmationByDocumentNumber,
-  deleteConfirmationByDocumentNumber
+  deleteConfirmationByDocumentNumber,
+  sendConfirmationByEmail
 } = require('../controllers/controll-confirmation');
 
 // Ruta para crear un nueva confirmación
@@ -22,5 +23,8 @@ router.put('/:documentNumber', updateConfirmationByDocumentNumber);
 
 // Ruta para eliminar una confirmación por número de documento
 router.delete('/:documentNumber', deleteConfirmationByDocumentNumber);
+
+// Ruta para enviar una confirmación por correo
+router.post('/send-email', sendConfirmationByEmail);
 
 module.exports = router;

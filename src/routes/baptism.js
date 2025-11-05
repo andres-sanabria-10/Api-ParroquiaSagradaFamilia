@@ -8,7 +8,8 @@ const {
   getAllBaptisms,
   getBaptismByDocumentNumber,
   updateBaptismByDocumentNumber,
-  deleteBaptismByDocumentNumber
+  deleteBaptismByDocumentNumber,
+  sendBaptismByEmail
 } = require('../controllers/controll-baptism');
 
 // Ruta para crear un nuevo bautismo
@@ -25,5 +26,8 @@ router.put('/:documentNumber', updateBaptismByDocumentNumber);
 
 // Ruta para eliminar un bautismo por número de documento
 router.delete('/:documentNumber', deleteBaptismByDocumentNumber);
+
+// Ruta para enviar un bautismo por correo
+router.post('/send-email', sendBaptismByEmail);
 
 module.exports = router;
