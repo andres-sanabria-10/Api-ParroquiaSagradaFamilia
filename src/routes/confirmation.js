@@ -25,6 +25,6 @@ router.put('/:documentNumber', updateConfirmationByDocumentNumber);
 router.delete('/:documentNumber', deleteConfirmationByDocumentNumber);
 
 // Ruta para enviar una confirmación por correo
-router.post('/send-email', sendConfirmationByEmail);
+router.post('/send', sendConfirmationByEmail);
 
 module.exports = router;

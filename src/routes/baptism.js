@@ -28,6 +28,6 @@ router.put('/:documentNumber', updateBaptismByDocumentNumber);
 router.delete('/:documentNumber', deleteBaptismByDocumentNumber);
 
 // Ruta para enviar un bautismo por correo
-router.post('/send-email', sendBaptismByEmail);
+router.post('/send', sendBaptismByEmail);
 
 module.exports = router;
