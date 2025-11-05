@@ -8,7 +8,9 @@ module.exports = {
     createRequestMass: async (req, res) => {
         try {
             const { date, time, intention } = req.body;
-            const token = req.headers.authorization?.split(' ').pop();
+            
+            // ✨ CAMBIO 1: Leer el token desde las cookies en lugar del header
+            const token = req.cookies.jwt;
     
             // Validar token
             if (!token) {
@@ -33,7 +35,7 @@ module.exports = {
                 date,
                 time,
                 intention,
-                applicant: userData._id  // Guardar la ID del usuario
+                applicant: userData._id
             });
     
             // Buscar la programación de misas para la fecha especificada
@@ -91,12 +93,12 @@ module.exports = {
 
     confirmRequest: async (req, res) => {
         try {
-            const { id } = req.params; // Asumiendo que el ID se pasa como parámetro en la URL
+            const { id } = req.params;
 
             const updatedRequest = await RequestMass.findByIdAndUpdate(
                 id,
                 { status: 'Confirmada' },
-                { new: true } // Esto hace que devuelva el documento actualizado
+                { new: true }
             );
 
             if (!updatedRequest) {
@@ -114,19 +116,16 @@ module.exports = {
 
     deleteRequest: async (req, res) => {
         try {
-            const { id } = req.params; // Asumiendo que el ID se pasa como parámetro en la URL
+            const { id } = req.params;
 
-            // Primero, obtenemos la solicitud para conocer la fecha y hora
             const request = await RequestMass.findById(id);
 
             if (!request) {
                 return res.status(404).json({ mensaje: "Solicitud no encontrada" });
             }
 
-            // Eliminamos la solicitud
             await RequestMass.findByIdAndDelete(id);
 
-            // Ahora, actualizamos el estado del horario en MassSchedule
             const updatedSchedule = await MassSchedule.findOneAndUpdate(
                 { 
                     date: request.date,
