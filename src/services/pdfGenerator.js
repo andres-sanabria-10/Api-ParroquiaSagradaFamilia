@@ -72,7 +72,7 @@ function generatePDF(departureType, departureData, filePath) {
 }
 
 function generateBaptismContent(doc, data) {
-  doc.text(`En el municipio de Santa María (Boyacá), a los ${data.baptismDate.getDate()} días del mes de ${getMonthName(data.baptismDate.getMonth())} del año ${data.baptismDate.getFullYear()}. Yo, el infrascrito Victor Cardenas, Párroco de esta Parroquia,`, {
+  doc.text(`En el municipio de Sogamoso (Boyacá), a los ${data.baptismDate.getDate()} días del mes de ${getMonthName(data.baptismDate.getMonth())} del año ${data.baptismDate.getFullYear()}. Yo, el infrascrito Omar Jiménez, Párroco de esta Parroquia,`, {
     lineGap: 5
   });
 
@@ -97,7 +97,7 @@ function generateBaptismContent(doc, data) {
 }
 
 function generateConfirmationContent(doc, data) {
-  doc.text(`En el municipio de Santa María (Boyacá), a los ${data.confirmationDate.getDate()} días del mes de ${getMonthName(data.confirmationDate.getMonth())} del año ${data.confirmationDate.getFullYear()}, el Excelentísimo Párroco Victor Cardenas,`, {
+  doc.text(`En el municipio de Sogamoso (Boyacá), a los ${data.confirmationDate.getDate()} días del mes de ${getMonthName(data.confirmationDate.getMonth())} del año ${data.confirmationDate.getFullYear()}, el Excelentísimo Párroco Omar Jiménez,`, {
     lineGap: 5
   });
   doc.moveDown(2);
@@ -121,7 +121,7 @@ function generateConfirmationContent(doc, data) {
 }
 
 function generateMarriageContent(doc, data) {
-  doc.text(`En el municipio de Santa María (Boyacá), a los ${data.marriageDate.getDate()} días del mes de ${getMonthName(data.marriageDate.getMonth())} del año ${data.marriageDate.getFullYear()}. Ante mí, Victor Cardenas, Párroco de esta Parroquia,`, {
+  doc.text(`En el municipio de Sogamoso (Boyacá), a los ${data.marriageDate.getDate()} días del mes de ${getMonthName(data.marriageDate.getMonth())} del año ${data.marriageDate.getFullYear()}. Ante mí, Omar Jiménez, Párroco de esta Parroquia,`, {
     lineGap: 5
   });
   doc.moveDown(2);
@@ -153,7 +153,7 @@ function generateMarriageContent(doc, data) {
 }
 
 function generateDeathContent(doc, data) {
-  doc.text(`En el municipio de Santa María (Boyacá), a los ${data.deathDate.getDate()} días del mes de ${getMonthName(data.deathDate.getMonth())} del año ${data.deathDate.getFullYear()}. Yo, el infrascrito Victor Cardenas, Párroco de esta Parroquia,`, {
+  doc.text(`En el municipio de Sogamoso (Boyacá), a los ${data.deathDate.getDate()} días del mes de ${getMonthName(data.deathDate.getMonth())} del año ${data.deathDate.getFullYear()}. Yo, el infrascrito Omar Jiménez, Párroco de esta Parroquia,`, {
     lineGap: 5
   });
 
