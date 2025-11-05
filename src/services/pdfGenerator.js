@@ -27,7 +27,7 @@ function generatePDF(departureType, departureData, filePath) {
     
     doc.moveDown(3);
     
-    doc.fontSize(18).font('Helvetica-Bold').text('PARROQUIA DE SANTA MARIA BOYACÁ', 130, 60, { width: 400, align: 'center' });
+    doc.fontSize(18).font('Helvetica-Bold').text('PARROQUIA SAGRADA FAMILIA DE SOGAMOSO BOYACÁ', 130, 60, { width: 400, align: 'center' });
     
     const departureTypeSpanish = translations[departureType] || departureType;
     doc.fontSize(16).text(`PARTIDA DE ${departureTypeSpanish.toUpperCase()}`, 130, 85, { width: 400, align: 'center' });
