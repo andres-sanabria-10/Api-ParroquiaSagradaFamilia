@@ -140,7 +140,7 @@ module.exports = {
       
       // Asumo que tu generador de PDF tiene una función 'generatePDF'
       // y que puede manejar un tipo 'baptism'
-      await pdfGenerator.generatePDF('baptism', baptism, pdfPath);
+      await pdfGenerator.generatePDF('Baptism', baptism, pdfPath);
 
       // 5. Enviar el correo (Asumiendo que tu servicio existe)
       // Asumo que tu servicio de email tiene una función 'sendCertificate'

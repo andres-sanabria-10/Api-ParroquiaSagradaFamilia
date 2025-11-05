@@ -153,7 +153,7 @@ module.exports = {
       const pdfPath = path.join(__dirname, '..', 'temp', `confirmacion_${documentNumber}.pdf`);
       
       // Asumo que tu generador de PDF maneja el tipo 'confirmation'
-      await pdfGenerator.generatePDF('confirmation', confirmation, pdfPath);
+      await pdfGenerator.generatePDF('Confirmation', confirmation, pdfPath);
 
       // 5. Enviar el correo
       await emailService.sendCertificate({
