@@ -40,7 +40,7 @@ module.exports = {
 
 
 
-    
+
     verifyCode: async (req, res) => {
         try {
             const { mail, verificationCode } = req.body;
@@ -118,49 +118,68 @@ module.exports = {
         }
     },
 
+    // Solo la función loginUser actualizada - reemplaza la que tienes
+
     loginUser: async (req, res) => {
         try {
             const { mail, password } = req.body;
-    
+
+            console.log("🔍 Login attempt for:", mail);
+
             if (!mail || !password) {
                 return res.status(400).json({ error: 'Email and password are required' });
             }
-    
+
             const user = await User.findOne({ mail });
-    
+
             if (!user) {
+                console.log("❌ User not found:", mail);
                 return res.status(404).json({ error: 'User not found' });
             }
-    
+
             const checkPassword = await compare(password, user.password);
-    
+
             if (!checkPassword) {
+                console.log("❌ Invalid password for:", mail);
                 return res.status(401).json({ error: 'Invalid password' });
             }
-    
+
             // JWT 
             const tokenSession = await tokenSign(user);
-    
-            // ✅ ACTUALIZADO: Cookie configurada para cross-origin
+            console.log("🔑 Token generated successfully");
+
+            // ✅ Cookie configurada para cross-origin
+            // IMPORTANTE: Render usa HTTPS, así que secure DEBE ser true
             res.cookie('jwt', tokenSession, {
-                httpOnly: true,
-                secure: true, // 👈 SIEMPRE true cuando el backend está en HTTPS (Render usa HTTPS)
-                sameSite: 'none', // 👈 Permite cookies entre dominios diferentes
-                maxAge: 3600000, // 1 hora
-                path: '/'
+                httpOnly: true,      // No accesible desde JavaScript del cliente
+                secure: true,        // HTTPS obligatorio (Render usa HTTPS)
+                sameSite: 'none',    // Permite cookies entre dominios diferentes
+                maxAge: 3600000,     // 1 hora en milisegundos
+                path: '/'            // Disponible en todas las rutas
             });
-    
+
+            console.log("🍪 Cookie JWT set successfully");
+
             const userResponse = user.toObject();
             delete userResponse.password;
-    
+
+            // ✅ Asegurarse de que el rol esté en minúsculas
+            userResponse.role = user.role.toLowerCase();
+
+            console.log("✅ Login successful for:", mail, "- Role:", userResponse.role);
+
+            // ✅ Respuesta JSON correcta
             return res.status(200).json({
                 message: 'Login successful',
                 data: userResponse,
             });
-    
+
         } catch (err) {
-            console.error('Login error:', err);
-            return res.status(500).json({ error: 'Internal server error' });
+            console.error('❌ Login error:', err);
+            return res.status(500).json({
+                error: 'Internal server error',
+                details: process.env.NODE_ENV === 'development' ? err.message : undefined
+            });
         }
     },
     logoutUser: async (req, res) => {
@@ -171,7 +190,7 @@ module.exports = {
                 sameSite: 'none', // 👈 Debe coincidir con la configuración del login
                 path: '/'
             });
-    
+
             return res.status(200).json({
                 message: 'Logout successful',
                 success: true
@@ -232,31 +251,31 @@ module.exports = {
     changePassword: async (req, res) => {
         try {
             const { mail, resetCode, newPassword } = req.body; // 👈 Agregar resetCode
-    
+
             // 👇 Validar que el código sea válido
             const user = await User.findOne({
                 mail,
                 resetCode,
                 resetCodeExpires: { $gt: Date.now() }
             });
-    
+
             if (!user) {
                 return res.status(400).json({ message: 'Código inválido o expirado' });
             }
-    
+
             // Validar longitud de contraseña
             if (newPassword.length < 8) {
                 return res.status(400).json({ error: 'La contraseña debe tener al menos 8 caracteres' });
             }
-    
+
             // Encriptación de la nueva contraseña
             const passwordHash = await encrypt(newPassword);
-    
+
             user.password = passwordHash;
             user.resetCode = undefined;
             user.resetCodeExpires = undefined;
             await user.save();
-    
+
             res.status(200).json({ message: 'Contraseña actualizada exitosamente' });
         } catch (error) {
             res.status(500).json({ message: 'Error en el servidor', error: error.message });
