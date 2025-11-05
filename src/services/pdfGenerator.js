@@ -15,25 +15,50 @@ function generatePDF(departureType, departureData, filePath) {
       size: 'A4',
       margins: { top: 50, bottom: 50, left: 50, right: 50 }
     });
+
     const stream = fs.createWriteStream(filePath);
     doc.pipe(stream);
 
     doc.font('Helvetica');
 
+    // borde
     addDecorateBorder(doc);
 
+    // logo
     const logoPath = path.join(__dirname, '..', 'services', 'parroquia.png');
     doc.image(logoPath, 50, 50, { width: 100 });
-    
-    doc.moveDown(3);
-    
-    doc.fontSize(18).font('Helvetica-Bold').text('PARROQUIA SAGRADA FAMILIA DE SOGAMOSO BOYACÁ', 130, 60, { width: 400, align: 'center' });
-    
+
+    // ====== CABECERA ======
+    const headerX = 130;
+    const headerWidth = 400;
+
+    doc
+      .fontSize(18)
+      .font('Helvetica-Bold')
+      .text(
+        'PARROQUIA SAGRADA FAMILIA DE SOGAMOSO BOYACÁ',
+        headerX,
+        60,
+        { width: headerWidth, align: 'center' }
+      );
+
+    // donde terminó el título
+    const afterTitleY = doc.y + 8;
+
     const departureTypeSpanish = translations[departureType] || departureType;
-    doc.fontSize(16).text(`PARTIDA DE ${departureTypeSpanish.toUpperCase()}`, 130, 85, { width: 400, align: 'center' });
+    doc
+      .fontSize(16)
+      .font('Helvetica-Bold')
+      .text(
+        `PARTIDA DE ${departureTypeSpanish.toUpperCase()}`,
+        headerX,
+        afterTitleY,
+        { width: headerWidth, align: 'center' }
+      );
 
-    doc.moveDown(5);
+    doc.moveDown(3);
 
+    // cuerpo
     doc.font('Helvetica').fontSize(12).fillColor('#000000');
 
     switch (departureType) {
@@ -54,15 +79,14 @@ function generatePDF(departureType, departureData, filePath) {
         return;
     }
 
-    // Agregar firma y sello como imágenes
+    // firma y sello
     doc.moveDown(15);
 
     const selloPath = path.join(__dirname, '..', 'services', 'sello.png');
     const firmaPath = path.join(__dirname, '..', 'services', 'firma.png');
 
     doc.image(selloPath, 400, doc.y, { width: 100 });
-    doc.image(firmaPath, 400, doc.y + 90, { width: 150 })
-
+    doc.image(firmaPath, 400, doc.y + 90, { width: 150 });
 
     doc.end();
 
@@ -72,125 +96,137 @@ function generatePDF(departureType, departureData, filePath) {
 }
 
 function generateBaptismContent(doc, data) {
-  doc.text(`En el municipio de Sogamoso (Boyacá), a los ${data.baptismDate.getDate()} días del mes de ${getMonthName(data.baptismDate.getMonth())} del año ${data.baptismDate.getFullYear()}. Yo, el infrascrito Omar Jiménez, Párroco de esta Parroquia,`, {
-    lineGap: 5
-  });
+  doc.text(
+    `En el municipio de Sogamoso (Boyacá), a los ${data.baptismDate.getDate()} días del mes de ${getMonthName(data.baptismDate.getMonth())} del año ${data.baptismDate.getFullYear()}. Yo, el infrascrito Omar Jiménez, Párroco de esta Parroquia,`,
+    { lineGap: 5 }
+  );
 
   doc.moveDown(2);
-  doc.font('Helvetica-Bold').text('BAUTICÉ SOLEMNEMENTE A:', { color: '#1c4587' });
+  doc.font('Helvetica-Bold').text('BAUTICÉ SOLEMNEMENTE A:');
   doc.moveDown(2);
-  
+
   doc.font('Helvetica-Bold').text('Nombres y Apellidos: ', { continued: true })
-     .font('Helvetica').text(`${data.baptized.name} ${data.baptized.lastName}`);
-  
+    .font('Helvetica').text(`${data.baptized.name} ${data.baptized.lastName}`);
+
   doc.font('Helvetica-Bold').text('Fecha de Nacimiento: ', { continued: true })
-     .font('Helvetica').text(`${data.baptized.birthdate.toLocaleDateString()}`);
-  
+    .font('Helvetica').text(`${data.baptized.birthdate.toLocaleDateString()}`);
+
   doc.font('Helvetica-Bold').text('Lugar de Nacimiento: ', { continued: true })
-     .font('Helvetica').text(`${data.placeBirth}`);
-  
+    .font('Helvetica').text(`${data.placeBirth}`);
+
   doc.font('Helvetica-Bold').text('Hijo/a de: ', { continued: true })
-     .font('Helvetica').text(`${data.fatherName} y ${data.motherName}`);
-  
+    .font('Helvetica').text(`${data.fatherName} y ${data.motherName}`);
+
   doc.font('Helvetica-Bold').text('Padrinos: ', { continued: true })
-     .font('Helvetica').text(`${data.godfather1} y ${data.godfather2 || 'N/A'}`);
+    .font('Helvetica').text(`${data.godfather1} y ${data.godfather2 || 'N/A'}`);
 }
 
 function generateConfirmationContent(doc, data) {
-  doc.text(`En el municipio de Sogamoso (Boyacá), a los ${data.confirmationDate.getDate()} días del mes de ${getMonthName(data.confirmationDate.getMonth())} del año ${data.confirmationDate.getFullYear()}, el Excelentísimo Párroco Omar Jiménez,`, {
-    lineGap: 5
-  });
+  doc.text(
+    `En el municipio de Sogamoso (Boyacá), a los ${data.confirmationDate.getDate()} días del mes de ${getMonthName(data.confirmationDate.getMonth())} del año ${data.confirmationDate.getFullYear()}, el Excelentísimo Párroco Omar Jiménez,`,
+    { lineGap: 5 }
+  );
+
   doc.moveDown(2);
-  doc.font('Helvetica-Bold').text('ADMINISTRÓ EL SACRAMENTO DE LA CONFIRMACIÓN A:', { color: '#1c4587' });
+  doc.font('Helvetica-Bold').text('ADMINISTRÓ EL SACRAMENTO DE LA CONFIRMACIÓN A:');
   doc.moveDown(2);
-  
+
   doc.font('Helvetica-Bold').text('Nombres y Apellidos: ', { continued: true })
-     .font('Helvetica').text(`${data.confirmed.name} ${data.confirmed.lastName}`);
-  
+    .font('Helvetica').text(`${data.confirmed.name} ${data.confirmed.lastName}`);
+
   doc.font('Helvetica-Bold').text('Fecha de Nacimiento: ', { continued: true })
-     .font('Helvetica').text(`${data.confirmed.birthdate.toLocaleDateString()}`);
-  
+    .font('Helvetica').text(`${data.confirmed.birthdate.toLocaleDateString()}`);
+
   doc.font('Helvetica-Bold').text('Hijo/a de: ', { continued: true })
-     .font('Helvetica').text(`${data.fatherName} y ${data.motherName}`);
-  
+    .font('Helvetica').text(`${data.fatherName} y ${data.motherName}`);
+
   doc.font('Helvetica-Bold').text('Bautizado/a en: ', { continued: true })
-     .font('Helvetica').text(`${data.buatizedParish || 'N/A'}`);
-  
+    .font('Helvetica').text(`${data.buatizedParish || 'N/A'}`);
+
   doc.font('Helvetica-Bold').text('Padrino/Madrina: ', { continued: true })
-     .font('Helvetica').text(`${data.godfather}`);
+    .font('Helvetica').text(`${data.godfather}`);
 }
 
 function generateMarriageContent(doc, data) {
-  doc.text(`En el municipio de Sogamoso (Boyacá), a los ${data.marriageDate.getDate()} días del mes de ${getMonthName(data.marriageDate.getMonth())} del año ${data.marriageDate.getFullYear()}. Ante mí, Omar Jiménez, Párroco de esta Parroquia,`, {
-    lineGap: 5
-  });
+  doc.text(
+    `En el municipio de Sogamoso (Boyacá), a los ${data.marriageDate.getDate()} días del mes de ${getMonthName(data.marriageDate.getMonth())} del año ${data.marriageDate.getFullYear()}. Ante mí, Omar Jiménez, Párroco de esta Parroquia,`,
+    { lineGap: 5 }
+  );
+
   doc.moveDown(2);
-  doc.font('Helvetica-Bold').text('CONTRAJERON MATRIMONIO CANÓNICO:', { color: '#1c4587' });
+  doc.font('Helvetica-Bold').text('CONTRAJERON MATRIMONIO CANÓNICO:');
   doc.moveDown(2);
-  
+
+  // esposo
   doc.font('Helvetica-Bold').text('El contrayente:');
   doc.font('Helvetica-Bold').text('Nombres y Apellidos: ', { continued: true })
-     .font('Helvetica').text(`${data.husband.name} ${data.husband.lastName}`);
+    .font('Helvetica').text(`${data.husband.name} ${data.husband.lastName}`);
   doc.font('Helvetica-Bold').text('Fecha de Nacimiento: ', { continued: true })
-     .font('Helvetica').text(`${data.husband.birthdate.toLocaleDateString()}`);
+    .font('Helvetica').text(`${data.husband.birthdate.toLocaleDateString()}`);
   doc.font('Helvetica-Bold').text('Hijo de: ', { continued: true })
-     .font('Helvetica').text(`${data.father_husband || 'N/A'} y ${data.mother_husband || 'N/A'}`);
-  
+    .font('Helvetica').text(`${data.father_husband || 'N/A'} y ${data.mother_husband || 'N/A'}`);
+
   doc.moveDown();
-  
+
+  // esposa
   doc.font('Helvetica-Bold').text('La contrayente:');
   doc.font('Helvetica-Bold').text('Nombres y Apellidos: ', { continued: true })
-     .font('Helvetica').text(`${data.wife.name} ${data.wife.lastName}`);
+    .font('Helvetica').text(`${data.wife.name} ${data.wife.lastName}`);
   doc.font('Helvetica-Bold').text('Fecha de Nacimiento: ', { continued: true })
-     .font('Helvetica').text(`${data.wife.birthdate.toLocaleDateString()}`);
+    .font('Helvetica').text(`${data.wife.birthdate.toLocaleDateString()}`);
   doc.font('Helvetica-Bold').text('Hija de: ', { continued: true })
-     .font('Helvetica').text(`${data.father_wife || 'N/A'} y ${data.mother_wife || 'N/A'}`);
-  
+    .font('Helvetica').text(`${data.father_wife || 'N/A'} y ${data.mother_wife || 'N/A'}`);
+
   doc.moveDown();
-  
+
   doc.font('Helvetica-Bold').text('Testigos: ', { continued: true })
-     .font('Helvetica').text(`${data.witness1} y ${data.witness2}`);
+    .font('Helvetica').text(`${data.witness1} y ${data.witness2}`);
 }
 
 function generateDeathContent(doc, data) {
-  doc.text(`En el municipio de Sogamoso (Boyacá), a los ${data.deathDate.getDate()} días del mes de ${getMonthName(data.deathDate.getMonth())} del año ${data.deathDate.getFullYear()}. Yo, el infrascrito Omar Jiménez, Párroco de esta Parroquia,`, {
-    lineGap: 5
-  });
+  doc.text(
+    `En el municipio de Sogamoso (Boyacá), a los ${data.deathDate.getDate()} días del mes de ${getMonthName(data.deathDate.getMonth())} del año ${data.deathDate.getFullYear()}. Yo, el infrascrito Omar Jiménez, Párroco de esta Parroquia,`,
+    { lineGap: 5 }
+  );
 
   doc.moveDown(2);
-  doc.font('Helvetica-Bold').text('CERTIFICA QUE:', { color: '#1c4587' });
+  doc.font('Helvetica-Bold').text('CERTIFICA QUE:');
   doc.moveDown(2);
-  
+
   doc.font('Helvetica-Bold').text('Nombres y Apellidos: ', { continued: true })
-     .font('Helvetica').text(`${data.dead.name} ${data.dead.lastName}`);
-  
+    .font('Helvetica').text(`${data.dead.name} ${data.dead.lastName}`);
+
   doc.font('Helvetica-Bold').text('Fecha de Nacimiento: ', { continued: true })
-     .font('Helvetica').text(`${data.dead.birthdate.toLocaleDateString()}`);
-  
+    .font('Helvetica').text(`${data.dead.birthdate.toLocaleDateString()}`);
+
   doc.font('Helvetica-Bold').text('Hijo/a de: ', { continued: true })
-     .font('Helvetica').text(`${data.fatherName} y ${data.motherName}`);
-  
+    .font('Helvetica').text(`${data.fatherName} y ${data.motherName}`);
+
   doc.font('Helvetica-Bold').text('Estado Civil: ', { continued: true })
-     .font('Helvetica').text(`${data.civilStatus}`);
-  
+    .font('Helvetica').text(`${data.civilStatus}`);
+
   doc.moveDown();
-  
+
   doc.font('Helvetica-Bold').text('Falleció el día ', { continued: true })
-     .font('Helvetica').text(`${data.deathDate.toLocaleDateString()} y recibió cristiana sepultura`);
-  
+    .font('Helvetica').text(`${data.deathDate.toLocaleDateString()} y recibió cristiana sepultura`);
+
   doc.font('Helvetica-Bold').text('en el cementerio de ', { continued: true })
-     .font('Helvetica').text(`${data.cemeteryName} el día ${data.funeralDate.toLocaleDateString()}.`);
+    .font('Helvetica').text(`${data.cemeteryName} el día ${data.funeralDate.toLocaleDateString()}.`);
 }
 
 function getMonthName(monthIndex) {
-  const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  const months = [
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+  ];
   return months[monthIndex];
 }
 
 function addDecorateBorder(doc) {
-  doc.lineWidth(2)
-     .rect(30, 30, doc.page.width - 60, doc.page.height - 60)
-     .stroke();
+  doc
+    .lineWidth(2)
+    .rect(30, 30, doc.page.width - 60, doc.page.height - 60)
+    .stroke();
 }
 
 module.exports = { generatePDF };
