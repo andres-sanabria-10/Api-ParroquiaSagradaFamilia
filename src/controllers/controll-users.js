@@ -67,7 +67,7 @@ module.exports = {
 // Controlador para obtener el usuario autenticado
 getUserProfile: async (req, res) => {
   try {
-    const token = req.headers.authorization?.split(' ').pop();
+    const token = req.cookies.jwt; // ✨ CAMBIO: Leer el token desde las cookies
 
     if (!token) {
       return res.status(401).json({ error: 'No se proporcionó token de autorización' });
