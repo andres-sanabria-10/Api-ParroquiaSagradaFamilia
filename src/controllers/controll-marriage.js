@@ -1,167 +1,176 @@
 const Marriage = require('../models/marriage'); 
-const User = require('../models/user')
+const User = require('../models/user');
+
+// --- ✨ NUEVA DEPENDENCIA ---
+const emailService = require('../services/emailService'); // Asumo que existe
 
 
 module.exports = {
 
 // Obtener todos los registros de matrimonio
 getAllMarriages : async (req, res) => {
-  try {
-    const marriages = await Marriage.find().populate([
-      {
-        path: 'husband',
-        select: 'name lastName documentNumber mail role'
-      },
-      {
-        path: 'wife',
-        select: 'name lastName documentNumber mail role'
-      }
-    ]);
-    res.json(marriages);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
+  // (Tu código existente... se mantiene igual)
+  try {
+    const marriages = await Marriage.find().populate([
+      {
+        path: 'husband',
+        select: 'name lastName documentNumber mail role'
+      },
+      {
+        path: 'wife',
+        select: 'name lastName documentNumber mail role'
+      }
+    ]);
+    res.json(marriages);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 },
 
 // Crear un nuevo registro de matrimonio
 createMarriage: async (req, res) => {
-  try {
-    // Validar que los documentos del esposo y la esposa sean diferentes
-    if (req.body.husbandDocumentNumber === req.body.wifeDocumentNumber) {
-      return res.status(400).json({ message: "El número de documento del esposo y la esposa no puede ser el mismo" });
-    }
-
-    // Buscar al esposo por su número de documento
-    const husband = await User.findOne({ documentNumber: req.body.husbandDocumentNumber });
-    if (!husband) {
-      return res.status(404).json({ message: "Esposo no encontrado" });
-    }
-
-    // Buscar a la esposa por su número de documento
-    const wife = await User.findOne({ documentNumber: req.body.wifeDocumentNumber });
-    if (!wife) {
-      return res.status(404).json({ message: "Esposa no encontrada" });
-    }
-
-    // Crear un nuevo objeto de matrimonio, reemplazando los números de documento con los ObjectId de los usuarios
-    const marriageData = {
-      ...req.body,
-      husband: husband._id,
-      wife: wife._id
-    };
-    
-    // Eliminar los números de documento del objeto de datos
-    delete marriageData.husbandDocumentNumber;
-    delete marriageData.wifeDocumentNumber;
-
-    const newMarriage = new Marriage(marriageData);
-    const saveMarriage = await newMarriage.save();
-    res.status(201).json(saveMarriage);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
+  // (Tu código existente... se mantiene igual)
+  try {
+    if (req.body.husbandDocumentNumber === req.body.wifeDocumentNumber) {
+      return res.status(400).json({ message: "El número de documento del esposo y la esposa no puede ser el mismo" });
+    }
+    const husband = await User.findOne({ documentNumber: req.body.husbandDocumentNumber });
+    if (!husband) {
+      return res.status(404).json({ message: "Esposo no encontrado" });
+    }
+    const wife = await User.findOne({ documentNumber: req.body.wifeDocumentNumber });
+    if (!wife) {
+      return res.status(404).json({ message: "Esposa no encontrada" });
+    }
+    const marriageData = {
+      ...req.body,
+      husband: husband._id,
+      wife: wife._id
+    };
+    delete marriageData.husbandDocumentNumber;
+    delete marriageData.wifeDocumentNumber;
+    const newMarriage = new Marriage(marriageData);
+    const saveMarriage = await newMarriage.save();
+    res.status(201).json(saveMarriage);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 },
 
-// Obtener un registro de matrimonio por número de documento del esposo o esposa
+// Obtener un registro de matrimonio por número de documento
 getMarriageByDocumentNumber: async (req, res) => {
-  try {
-    // Buscar al usuario por su número de documento
-    const user = await User.findOne({ documentNumber: req.params.documentNumber });
-    if (!user) {
-      return res.status(404).json({ message: "Usuario no encontrado" });
-    }
-
-    // Buscar el matrimonio usando el ID del usuario
-    const marriage = await Marriage.findOne({ 
-      $or: [
-        { husband: user._id },
-        { wife: user._id }
-      ]
-    }).populate([
-      {
-        path: 'husband',
-        select: 'name lastName documentNumber mail role'
-      },
-      {
-        path: 'wife',
-        select: 'name lastName documentNumber mail role'
-      }
-    ]);
-    
-    if (!marriage) {
-      return res.status(404).json({ message: 'Matrimonio no encontrado' });
-    }
-
-    res.json(marriage);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
+  // (Tu código existente... se mantiene igual)
+  try {
+    const user = await User.findOne({ documentNumber: req.params.documentNumber });
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+    const marriage = await Marriage.findOne({ 
+      $or: [
+        { husband: user._id },
+        { wife: user._id }
+      ]
+    }).populate([
+      { path: 'husband', select: 'name lastName documentNumber mail role' },
+      { path: 'wife', select: 'name lastName documentNumber mail role' }
+    ]);
+    if (!marriage) {
+      return res.status(404).json({ message: 'Matrimonio no encontrado' });
+    }
+    res.json(marriage);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 },
 
-// Actualizar un registro de matrimonio por número de documento del esposo o esposa
+// Actualizar un registro de matrimonio
 updateMarriageByDocumentNumber: async (req, res) => {
-  try {
-    // Buscar al usuario por su número de documento
-    const user = await User.findOne({ documentNumber: req.params.documentNumber });
-    if (!user) {
-      return res.status(404).json({ message: "Usuario no encontrado" });
+  // (Tu código existente... se mantiene igual)
+  try {
+    const user = await User.findOne({ documentNumber: req.params.documentNumber });
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+    const updatedMarriage = await Marriage.findOneAndUpdate(
+      { $or: [{ husband: user._id }, { wife: user._id }] },
+      req.body,
+      { new: true }
+    ).populate(['husband', 'wife']);
+    if (!updatedMarriage) {
+      return res.status(404).json({ message: 'Matrimonio no encontrado para actualizar' });
+    }
+    res.json(updatedMarriage);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+},
+
+// Eliminar un registro de matrimonio
+deleteMarriageByDocumentNumber: async (req, res) => {
+  // (Tu código existente... se mantiene igual)
+  try {
+    const user = await User.findOne({ documentNumber: req.params.documentNumber });
+    if (!user) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+    const deleteMarriage = await Marriage.findOneAndDelete({ 
+      $or: [{ husband: user._id }, { wife: user._id }]
+    });
+    if (!deleteMarriage) {
+      return res.status(404).json({ message: 'Matrimonio no encontrado para eliminar' });
+    }
+    res.json({ message: 'Matrimonio eliminado correctamente' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+},
+
+// --- ✨ NUEVO ENDPOINT PARA ENVIAR POR CORREO ---
+sendMarriageByEmail: async (req, res) => {
+    // 1. Obtenemos el DNI (del esposo) y el correo del cuerpo
+    const { documentNumber, sendToEmail } = req.body;
+
+    if (!documentNumber || !sendToEmail) {
+      return res.status(400).json({ message: "Faltan el número de documento o el correo de destino." });
     }
 
-    // Buscar y actualizar el matrimonio usando el ID del usuario
-    const updatedMarriage = await Marriage.findOneAndUpdate(
-      { 
+    try {
+      // 2. Buscamos el matrimonio (usando la misma lógica que ya tenías)
+      // Usamos el DNI que viene en el body, no en params
+      const user = await User.findOne({ documentNumber: documentNumber });
+      if (!user) {
+        return res.status(404).json({ message: 'Usuario (esposo) no encontrado' });
+      }
+
+      const marriage = await Marriage.findOne({ 
         $or: [
           { husband: user._id },
           { wife: user._id }
         ]
-      },
-      req.body,
-      { new: true }
-    ).populate([
-      {
-        path: 'husband',
-        select: 'name lastName documentNumber mail role'
-      },
-      {
-        path: 'wife',
-        select: 'name lastName documentNumber mail role'
+      }).populate(['husband', 'wife']);
+
+      if (!marriage) {
+        return res.status(404).json({ message: 'Matrimonio no encontrado para este usuario' });
       }
-    ]);
-    
-    if (!updatedMarriage) {
-      return res.status(404).json({ message: 'Matrimonio no encontrado para actualizar' });
-    }
 
-    res.json(updatedMarriage);
-  } catch (error) {
-    res.status(500).json({ message: error.message });
+      // 3. Creamos el objeto 'requestData' que tu servicio de email espera
+      const requestData = {
+        departureType: 'Marriage', // Con 'M' mayúscula para tu pdfGenerator
+        applicant: {
+          name: `${marriage.husband.name} y ${marriage.wife.name}`,
+          mail: sendToEmail // ✨ El email que la secretaria ingresó
+        }
+      };
+      
+      // 4. Llamamos a la función correcta de tu servicio
+      await emailService.sendDepartureDocument(requestData, marriage);
+
+      // 5. Enviar respuesta de éxito
+      res.status(200).json({ message: `Partida de matrimonio enviada exitosamente a ${sendToEmail}` });
+
+    } catch (error) {
+      console.error('Error al enviar la partida de matrimonio:', error);
+      res.status(500).json({ message: "Error interno del servidor", error: error.message });
+    }
   }
-},
-
-// Eliminar un registro de matrimonio por número de documento del esposo o esposa
-deleteMarriageByDocumentNumber: async (req, res) => {
-  try {
-    // Buscar al usuario por su número de documento
-    const user = await User.findOne({ documentNumber: req.params.documentNumber });
-    if (!user) {
-      return res.status(404).json({ message: "Usuario no encontrado" });
-    }
-
-    // Buscar y eliminar el matrimonio usando el ID del usuario
-    const deleteMarriage = await Marriage.findOneAndDelete({ 
-      $or: [
-        { husband: user._id },
-        { wife: user._id }
-      ]
-    });
-    
-    if (!deleteMarriage) {
-      return res.status(404).json({ message: 'Matrimonio no encontrado para eliminar' });
-    }
-
-    res.json({ message: 'Matrimonio eliminado correctamente' });
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
-}
 };

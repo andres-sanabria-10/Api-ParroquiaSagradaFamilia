@@ -5,7 +5,8 @@ const {
   createDeath,
   getDeathByDocumentNumber,
   updateDeathByDocumentNumber,
-  deleteDeathByDocumentNumber
+  deleteDeathByDocumentNumber,
+  sendDeathByEmail
 } = require('../controllers/controll-death'); // Ajusta la ruta según tu estructura de proyecto
 
 // Ruta para obtener todas las defunciones
@@ -22,5 +23,8 @@ router.put('/:documentNumber', updateDeathByDocumentNumber);
 
 // Ruta para eliminar una defunción por número de documento
 router.delete('/:documentNumber', deleteDeathByDocumentNumber);
+
+// Ruta para enviar una defunción por correo
+router.post('/send', sendDeathByEmail);
 
 module.exports = router;
