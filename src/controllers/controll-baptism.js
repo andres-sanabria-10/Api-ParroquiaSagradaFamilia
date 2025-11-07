@@ -1,12 +1,9 @@
 const Baptism = require('../models/baptism');
 const User = require('../models/user');
 
-// --- ✨ NUEVAS DEPENDENCIAS ---
-// Asumo que tienes estos servicios de tu proyecto anterior
-const path = require('path');
-const fs = require('fs');
-const pdfGenerator = require('../services/pdfGenerator'); // Asumo que existe
-const emailService = require('../services/emailService');   // Asumo que existe
+// --- ✨ DEPENDENCIAS ELIMINADAS ---
+// Ya no necesitamos 'path', 'fs', ni 'pdfGenerator' aquí.
+const emailService = require('../services/emailService');   // Solo necesitamos este
 
 
 module.exports = {
@@ -14,7 +11,6 @@ module.exports = {
   // Controlador para crear un nuevo bautismo
   createBaptism: async (req, res) => {
     try {
-      // (Tu código existente... se mantiene igual)
       const baptismDate = new Date(req.body.baptismDate);
       const currentDate = new Date();
       if (baptismDate > currentDate) {
@@ -39,7 +35,6 @@ module.exports = {
 
   // Controlador para obtener todos los bautismos
   getAllBaptisms: async (req, res) => {
-    // (Tu código existente... se mantiene igual)
     try {
       const baptisms = await Baptism.find().populate({
         path: 'baptized',
@@ -53,7 +48,6 @@ module.exports = {
 
   // Controlador para obtener un bautismo por número de documento del usuario
   getBaptismByDocumentNumber: async (req, res) => {
-    // (Tu código existente... se mantiene igual)
     try {
       const user = await User.findOne({ documentNumber: req.params.documentNumber });
       if (!user) {
@@ -74,7 +68,6 @@ module.exports = {
 
   // Controlador para actualizar un bautismo por número de documento del usuario
   updateBaptismByDocumentNumber: async (req, res) => {
-    // (Tu código existente... se mantiene igual)
     try {
       const user = await User.findOne({ documentNumber: req.params.documentNumber });
       if (!user) {
@@ -96,7 +89,6 @@ module.exports = {
 
   // Controlador para eliminar un bautismo por número de documento del usuario
   deleteBaptismByDocumentNumber: async (req, res) => {
-    // (Tu código existente... se mantiene igual)
     try {
       const user = await User.findOne({ documentNumber: req.params.documentNumber });
       if (!user) {
@@ -112,18 +104,17 @@ module.exports = {
     }
   },
 
-  // --- ✨ NUEVO ENDPOINT PARA ENVIAR POR CORREO ---
+  // --- ✨ FUNCIÓN `sendBaptismByEmail` REESCRITA ---
   sendBaptismByEmail: async (req, res) => {
     // 1. Obtenemos el DNI y el correo del cuerpo de la solicitud
     const { documentNumber, sendToEmail } = req.body;
 
-    // 2. Validamos que tengamos los datos necesarios
     if (!documentNumber || !sendToEmail) {
       return res.status(400).json({ message: "Faltan el número de documento o el correo de destino." });
     }
 
     try {
-      // 3. Buscamos el bautismo (usando la misma lógica que ya tenías)
+      // 2. Buscamos el bautismo
       const user = await User.findOne({ documentNumber: documentNumber });
       if (!user) {
         return res.status(404).json({ message: 'Usuario no encontrado' });
@@ -134,28 +125,19 @@ module.exports = {
         return res.status(404).json({ message: 'Bautismo no encontrado para este usuario' });
       }
 
-      // 4. Generar el PDF (Asumiendo que tu servicio existe)
-      // Asegúrate de que la carpeta 'temp' exista en la raíz de tu backend
-      const pdfPath = path.join(__dirname, '..', 'temp', `bautismo_${documentNumber}.pdf`);
+      // 3. Creamos el objeto 'requestData' que tu servicio de email espera
+      const requestData = {
+        departureType: 'Baptism', // Usamos 'Baptism' (B mayúscula) como espera tu pdfGenerator
+        applicant: {
+          name: baptism.baptized.name,
+          mail: sendToEmail // ✨ Aquí ponemos el email que la secretaria ingresó
+        }
+      };
       
-      // Asumo que tu generador de PDF tiene una función 'generatePDF'
-      // y que puede manejar un tipo 'baptism'
-      await pdfGenerator.generatePDF('Baptism', baptism, pdfPath);
+      // 4. Llamamos a la función correcta de tu servicio
+      await emailService.sendDepartureDocument(requestData, baptism);
 
-      // 5. Enviar el correo (Asumiendo que tu servicio existe)
-      // Asumo que tu servicio de email tiene una función 'sendCertificate'
-      await emailService.sendCertificate({
-        to: sendToEmail,
-        subject: `Partida de Bautismo - ${baptism.baptized.name} ${baptism.baptized.lastName}`,
-        userName: baptism.baptized.name,
-        documentType: 'Bautismo',
-        pdfPath: pdfPath
-      });
-
-      // 6. Limpiar el archivo PDF temporal
-      fs.unlinkSync(pdfPath);
-
-      // 7. Enviar respuesta de éxito
+      // 5. Enviar respuesta de éxito
       res.status(200).json({ message: `Partida de bautismo enviada exitosamente a ${sendToEmail}` });
 
     } catch (error) {
