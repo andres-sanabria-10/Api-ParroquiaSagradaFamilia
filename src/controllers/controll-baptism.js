@@ -1,5 +1,6 @@
 const Baptism = require('../models/baptism');
 const User = require('../models/user');
+const { encrypt } = require('../helpers/handleBcrypt');
 
 // --- ✨ DEPENDENCIAS ELIMINADAS ---
 // Ya no necesitamos 'path', 'fs', ni 'pdfGenerator' aquí.
@@ -10,28 +11,70 @@ module.exports = {
 
   // Controlador para crear un nuevo bautismo
   createBaptism: async (req, res) => {
-    try {
-      const baptismDate = new Date(req.body.baptismDate);
-      const currentDate = new Date();
-      if (baptismDate > currentDate) {
-        return res.status(400).json({ message: "La fecha de bautismo no puede ser futura" });
-      }
-      const user = await User.findOne({ documentNumber: req.body.documentNumber });
-      if (!user) {
-        return res.status(404).json({ message: "Usuario no encontrado" });
-      }
-      const baptismData = {
-        ...req.body,
-        baptized: user._id
-      };
-      delete baptismData.documentNumber;
-      const newBaptism = new Baptism(baptismData);
-      const saveBaptism = await newBaptism.save();
-      res.status(201).json(saveBaptism);
-    } catch (error) {
-      res.status(500).json({ message: error.message });
-    }
-  },
+      try {
+          // 1. Validación de Fecha (igual que antes)
+          const baptismDate = new Date(req.body.baptismDate);
+          const currentDate = new Date();
+          if (baptismDate > currentDate) {
+            return res.status(400).json({ error: "La fecha de bautismo no puede ser futura" });
+           }
+    
+           // 2. Buscar al usuario
+          let user = await User.findOne({ documentNumber: req.body.documentNumber });
+    
+          // 3. ✨ Lógica NUEVA: Si el usuario NO existe, lo creamos
+         if (!user) {
+            // Validamos que tengamos los datos mínimos del formulario
+            const { name, lastName, mail, birthdate, documentNumber } = req.body;
+            if (!name || !lastName || !mail || !birthdate || !documentNumber) {
+              return res.status(400).json({ message: "Faltan datos del bautizado (nombre, apellido, email, fecha de nac.) para crear el nuevo usuario." });
+            }
+            
+            // Creamos una contraseña temporal (ej. el DNI)
+            const tempPassword = await encrypt(documentNumber);
+    
+            const newUser = new User({
+              name,
+              lastName,
+              mail,
+              birthdate,
+              documentNumber,
+              password: tempPassword,
+              role: 'feligres' // Asignamos rol por defecto
+              // 'typeDocument' será omitido por ahora, o puedes añadirlo al formulario
+            });
+    
+            // Guardamos el nuevo usuario y lo asignamos a la variable 'user'
+            user = await newUser.save();
+            
+            toast.info("Nuevo usuario creado", { description: `Se creó un registro de usuario básico para ${name} ${lastName}.` });
+         }
+    
+          // 4. Preparar y guardar la partida de bautismo
+          const baptismData = {
+            ...req.body,
+            baptized: user._id
+          };
+          const finalBaptismData = {
+            baptized: user._id,
+            baptismDate: req.body.baptismDate,
+            placeBirth: req.body.placeBirth,
+            fatherName: req.body.fatherName,
+            motherName: req.body.motherName,
+            godfather1: req.body.godfather1,
+            godfather2: req.body.godfather2,
+          };
+    
+          const newBaptism = new Baptism(finalBaptismData);
+          const saveBaptism = await newBaptism.save();
+          res.status(201).json(saveBaptism);
+        } catch (error) {
+          if (error.code === 11000) { // Error de duplicado (ej. email o DNI ya existen)
+            return res.status(409).json({ message: "Error de duplicado: El DNI o el correo ya están registrados.", details: error.message });
+          }
+          res.status(500).json({ message: error.message });
+       }
+      },
 
   // Controlador para obtener todos los bautismos
   getAllBaptisms: async (req, res) => {
