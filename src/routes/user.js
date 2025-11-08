@@ -27,6 +27,6 @@ router.put('/:id', updateUserById);
 router.delete('/:id', deleteUserById);
 
 // Ruta para obtener usuario por DNI
-router.get('/:documentNumber', getUserByDocumentNumber);
+router.get('/by-document/:documentNumber', getUserByDocumentNumber);
 
 module.exports = router;
