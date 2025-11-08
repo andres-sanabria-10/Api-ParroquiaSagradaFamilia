@@ -9,8 +9,17 @@ module.exports = {
         try {
             const { date, time, intention } = req.body;
             
-            // ✨ CAMBIO 1: Leer el token desde las cookies en lugar del header
-            const token = req.cookies.jwt;
+            let token;
+
+            // ✅ OPCIÓN 1: Intentar obtener el token desde el header Authorization
+            const authHeader = req.headers.authorization;
+            if (authHeader && authHeader.startsWith('Bearer ')) {
+                token = authHeader.substring(7);
+            } 
+            // ✅ OPCIÓN 2 (fallback): Si no está en el header, intentar desde cookies
+            else if (req.cookies && req.cookies.jwt) {
+                token = req.cookies.jwt;
+            }
     
             // Validar token
             if (!token) {
