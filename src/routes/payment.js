@@ -10,7 +10,7 @@ const {
 } = require('../controllers/controll-payment');
 
 // Middleware de autenticación
-const checkAuth = require('../middlewares/auth');
+const checkAuth = require('../middleware/auth');
 
 // 🔐 Rutas protegidas (requieren JWT)
 router.post('/create', checkAuth, createPayment);
