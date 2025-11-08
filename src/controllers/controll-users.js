@@ -65,9 +65,20 @@ module.exports = {
   },
 
 // Controlador para obtener el usuario autenticado
+// Controlador para obtener el usuario autenticado
 getUserProfile: async (req, res) => {
   try {
-    const token = req.cookies.jwt; // ✨ CAMBIO: Leer el token desde las cookies
+    let token;
+
+    // ✅ OPCIÓN 1: Intentar obtener el token desde el header Authorization
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7); // Quitar "Bearer " del inicio
+    } 
+    // ✅ OPCIÓN 2 (fallback): Si no está en el header, intentar desde cookies
+    else if (req.cookies && req.cookies.jwt) {
+      token = req.cookies.jwt;
+    }
 
     if (!token) {
       return res.status(401).json({ error: 'No se proporcionó token de autorización' });
@@ -77,14 +88,14 @@ getUserProfile: async (req, res) => {
     const user = await User.findById(tokenData._id).populate('typeDocument');
 
     if (!user) {
-      return res.status(404).send({ error: 'Usuario no encontrado' });
+      return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
     console.log('Usuario encontrado:', user); // Log para depuración
-    res.status(200).send(user);
+    res.status(200).json(user);
   } catch (err) {
     console.error('Error al obtener perfil de usuario:', err); // Log para depuración
-    res.status(500).send({ error: 'Error al obtener perfil de usuario', details: err.message });
+    res.status(500).json({ error: 'Error al obtener perfil de usuario', details: err.message });
   }
 },
 
