@@ -1,9 +1,7 @@
 const Death = require('../models/death'); 
 const User = require('../models/user');
-
-// --- ✨ NUEVA DEPENDENCIA ---
-const emailService = require('../services/emailService'); // Asumo que existe
-
+const { encrypt } = require('../helpers/handleBcrypt');
+const emailService = require('../services/emailService');
 
 module.exports = {
   // Obtener todas las defunciones
@@ -23,41 +21,61 @@ module.exports = {
 
   // Crear una nueva defunción
   createDeath: async (req, res) => {
-    // (Tu código existente... se mantiene igual)
-    try {
-      const deathDate = new Date(req.body.deathDate);
-      const currentDate = new Date();
-      if (deathDate > currentDate) {
-        return res.status(400).json({ message: "La fecha de defunción no puede ser futura" });
-      }
-
-      const existingDeath = await Death.findOne({ "dead.documentNumber": req.body.documentNumber });
-      if (existingDeath) {
-        return res.status(400).json({ message: "Ya existe un registro de defunción para este número de documento" });
-      }
-
-      const user = await User.findOne({ documentNumber: req.body.documentNumber });
-      if (!user) {
-        return res.status(404).json({ message: "Usuario no encontrado" });
-      }
-
-      const defaultFuneralDate = new Date(deathDate);
-      defaultFuneralDate.setDate(defaultFuneralDate.getDate() + 2);
-
-      const deathData = {
-        ...req.body,
-        dead: user._id, 
-        funeralDate: req.body.funeralDate || defaultFuneralDate
-      };
-      delete deathData.documentNumber;
-
-      const newDeath = new Death(deathData);
-      const saveDeath = await newDeath.save();
-      res.status(201).json(saveDeath);
-    } catch (error) {
-      res.status(500).json({ message: error.message });
-    }
-  },
+      try {
+        // 1. Validación de Fecha
+        const deathDate = new Date(req.body.deathDate);
+        const currentDate = new Date();
+        if (deathDate > currentDate) {
+          return res.status(400).json({ message: "La fecha de defunción no puede ser futura" });
+        }
+  
+        // 2. Buscar al usuario por DNI
+        let user = await User.findOne({ documentNumber: req.body.documentNumber });
+  
+        // 3. Si el usuario NO existe, lo creamos
+        if (!user) {
+          const { name, lastName, mail, birthdate, documentNumber } = req.body;
+          if (!name || !lastName || !mail || !birthdate || !documentNumber) {
+            return res.status(400).json({ message: "Faltan datos del fallecido (nombre, apellido, email, fecha de nac.) para crear el nuevo usuario." });
+          }
+          const tempPassword = await encrypt(documentNumber);
+          const newUser = new User({
+            name,
+            lastName,
+            mail,
+            birthdate,
+            documentNumber,
+            password: tempPassword,
+            role: 'feligres'
+          });
+          user = await newUser.save();
+        }
+  
+        // 4. Preparar y guardar la partida de defunción
+        const defaultFuneralDate = new Date(deathDate);
+        defaultFuneralDate.setDate(defaultFuneralDate.getDate() + 2);
+  
+        const finalDeathData = {
+          dead: user._id, // El ID del usuario
+          deathDate: req.body.deathDate,
+          fatherName: req.body.fatherName,
+          motherName: req.body.motherName,
+          civilStatus: req.body.civilStatus,
+          cemeteryName: req.body.cemeteryName,
+          funeralDate: req.body.funeralDate || defaultFuneralDate
+        };
+  
+        const newDeath = new Death(finalDeathData);
+        const saveDeath = await newDeath.save();
+        res.status(201).json(saveDeath);
+  
+      } catch (error) {
+        if (error.code === 11000) { 
+          return res.status(409).json({ message: "Error de duplicado: El DNI o el correo ya están registrados.", details: error.message });
+        }
+        res.status(500).json({ message: error.message });
+      }
+    },
 
   // Controlador para obtener una defunción por número de documento del usuario
   getDeathByDocumentNumber: async (req, res) => {
