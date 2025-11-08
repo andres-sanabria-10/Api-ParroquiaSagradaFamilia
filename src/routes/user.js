@@ -7,7 +7,8 @@ const {
   getAllUsers,
   getUserProfile,
   updateUserById,
-  deleteUserById
+  deleteUserById,
+  getUserByDocumentNumber
 } = require('../controllers/controll-users');
 
 // Ruta para crear un nuevo usuario
@@ -24,5 +25,8 @@ router.put('/:id', updateUserById);
 
 // Ruta para eliminar un usuario por ID
 router.delete('/:id', deleteUserById);
+
+// Ruta para obtener usuario por DNI
+router.get('/:documentNumber', getUserByDocumentNumber);
 
 module.exports = router;
