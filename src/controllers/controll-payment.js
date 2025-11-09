@@ -126,6 +126,15 @@ const createPayment = async (req, res) => {
     // 🔐 Mapear tipo de documento
     const mappedDocType = mapDocumentType(user.typeDocument?.document_type_name);
 
+    console.log('👤 Datos del usuario:', {
+      name: `${user.name} ${user.lastName}`,
+      email: user.mail,
+      documentType: user.typeDocument?.document_type_name,
+      mappedDocType,
+      documentNumber: user.documentNumber,
+      phone: user.phone
+    });
+
     // 🌐 Procesar pago con la API de ePayco
     const epaycoData = {
       // Credenciales
@@ -199,10 +208,42 @@ const createPayment = async (req, res) => {
     }
 
   } catch (error) {
-    console.error('💥 Error en createPayment:', error.response?.data || error.message);
+    console.error('💥 Error en createPayment:', error);
+    
+    // Manejo detallado de errores
+    let errorMessage = 'Error desconocido';
+    let errorDetails = {};
+
+    if (error.response) {
+      // Error de respuesta de ePayco
+      console.error('📡 Error de ePayco:', error.response.data);
+      errorMessage = 'Error al procesar el pago con ePayco';
+      errorDetails = {
+        status: error.response.status,
+        data: error.response.data,
+        message: error.response.data?.message || error.response.statusText
+      };
+    } else if (error.request) {
+      // Error de red (no hubo respuesta)
+      console.error('🌐 Error de red:', error.message);
+      errorMessage = 'Error de conexión con ePayco';
+      errorDetails = {
+        message: error.message,
+        code: error.code
+      };
+    } else {
+      // Error en la configuración de la petición
+      console.error('⚙️ Error de configuración:', error.message);
+      errorMessage = error.message;
+      errorDetails = {
+        message: error.message,
+        stack: error.stack?.split('\n').slice(0, 3)
+      };
+    }
+
     res.status(500).json({ 
-      error: 'Error al crear el pago',
-      details: error.response?.data || error.message 
+      error: errorMessage,
+      details: errorDetails
     });
   }
 };
