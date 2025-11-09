@@ -51,7 +51,7 @@ createMarriage: async (req, res) => {
           const newHusband = new User({
             name: husbandName, lastName: husbandLastName, mail: husbandMail, birthdate: husbandBirthdate, 
             documentNumber: husbandDocumentNumber, typeDocument: husbandTypeDocument, 
-            password: tempPassword, role: 'feligres'
+            password: tempPassword, role: 'Usuario'
           });
           husband = await newHusband.save();
         }
@@ -66,7 +66,7 @@ createMarriage: async (req, res) => {
           const newWife = new User({
             name: wifeName, lastName: wifeLastName, mail: wifeMail, birthdate: wifeBirthdate,
             documentNumber: wifeDocumentNumber, typeDocument: wifeTypeDocument,
-            password: tempPassword, role: 'feligres'
+            password: tempPassword, role: 'Usuario'
           });
           wife = await newWife.save();
         }

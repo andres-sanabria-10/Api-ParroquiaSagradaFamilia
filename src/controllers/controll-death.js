@@ -38,7 +38,7 @@ createDeath: async (req, res) => {
         const tempPassword = await encrypt(documentNumber);
         const newUser = new User({
           name, lastName, mail, birthdate, documentNumber, typeDocument,
-          password: tempPassword, role: 'feligres'
+          password: tempPassword, role: 'Usuario'
         });
         user = await newUser.save();
       }

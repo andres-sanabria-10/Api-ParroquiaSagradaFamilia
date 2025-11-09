@@ -26,7 +26,7 @@ module.exports = {
               return res.status(400).json({ message: "Faltan datos del bautizado (incluyendo tipo de doc.) para crear el nuevo usuario." });
             }
             const tempPassword = await encrypt(documentNumber);
-            const newUser = new User({ name, lastName, mail, birthdate, documentNumber, typeDocument, password: tempPassword, role: 'feligres' });
+            const newUser = new User({ name, lastName, mail, birthdate, documentNumber, typeDocument, password: tempPassword, role: 'Usuario' });
             user = await newUser.save();
           }
     
