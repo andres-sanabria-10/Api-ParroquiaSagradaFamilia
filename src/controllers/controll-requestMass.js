@@ -165,56 +165,65 @@ module.exports = {
 
 
     adminCreateMassRequest: async (req, res) => {
-        try {
-          const {
-            // Datos del Usuario
-            documentNumber,
-            typeDocument,
-            name,
-            lastName,
-            mail,
-            birthdate,
-            // Datos de la Misa
-            date,
-            time,
-            intention
-          } = req.body;
-    
-          // 1. Buscar al usuario por DNI
-          let user = await User.findOne({ documentNumber: documentNumber });
-    
-          // 2. Si el usuario NO existe, lo creamos
-          if (!user) {
-            if (!name || !lastName || !mail || !birthdate || !typeDocument) {
-              return res.status(400).json({ message: "Faltan datos del solicitante (incluyendo tipo de doc.) para crear el nuevo usuario." });
-            }
-            const tempPassword = await encrypt(documentNumber);
-            const newUser = new User({
-              name, lastName, mail, birthdate, documentNumber, typeDocument,
-              password: tempPassword, role: 'Usuario'
-            });
-            user = await newUser.save();
-          }
-    
-          // 3. Crear la solicitud de misa
-          const newMassRequest = new RequestMass({
-            applicant: user._id, // Enlazamos al usuario (encontrado o creado)
-            date,
-            time,
-            intention,
-            status: 'Pendiente' // La secretaria la crea, pero debe ser aprobada (por el pago)
-          });
-    
-          const savedRequest = await newMassRequest.save();
-          res.status(201).json(savedRequest);
-    
-        } catch (error) {
-          if (error.code === 11000) { 
-            return res.status(409).json({ message: "Error de duplicado: El DNI o el correo ya están registrados.", details: error.message });
-          }
-          res.status(500).json({ message: error.message });
-        }
-      }
+                try {
+                  const {
+                    // Datos del Usuario
+                    documentNumber,
+                    typeDocument,
+                    name,
+                    lastName,
+                    mail,
+                    birthdate,
+                    // Datos de la Misa
+                    date,
+                    time,
+                    intention
+                  } = req.body;
+            
+                  // 1. Validar datos mínimos de la misa
+                  if (!date || !time || !intention) {
+                      return res.status(400).json({ message: "Faltan datos de la misa (fecha, hora o intención)." });
+                  }
+        
+                  // 2. Buscar al usuario por DNI
+                  // ✨ CAMBIO: Usamos 'userModel' en lugar de 'User'
+                  let user = await userModel.findOne({ documentNumber: documentNumber });
+            
+                  // 3. Si el usuario NO existe, lo creamos
+                  if (!user) {
+                    if (!name || !lastName || !mail || !birthdate || !typeDocument) {
+                      return res.status(400).json({ message: "Faltan datos del solicitante (incluyendo tipo de doc.) para crear el nuevo usuario." });
+                    }
+                    const tempPassword = await encrypt(documentNumber);
+                    
+                    // ✨ CAMBIO: Usamos 'userModel' en lugar de 'User'
+                    const newUser = new userModel({ 
+                      name, lastName, mail, birthdate, documentNumber, typeDocument,
+                      password: tempPassword, role: 'feligres' // Tu rol por defecto parece ser 'Usuario', cámbialo si es necesario
+                    });
+                    user = await newUser.save();
+                }
+            
+                  // 4. Crear la solicitud de misa
+                  const newMassRequest = new RequestMass({
+                    applicant: user._id, // Enlazamos al usuario (encontrado o creado)
+                    date,
+                    time,
+                    intention,
+                    status: 'Pendiente' 
+                  });
+            
+                  const savedRequest = await newMassRequest.save();
+                  res.status(201).json(savedRequest);
+            
+                } catch (error) {
+                  if (error.code === 11000) { 
+                    return res.status(409).json({ message: "Error de duplicado: El DNI o el correo ya están registrados.", details: error.message });
+                  }
+                  console.error('Error en adminCreateMassRequest:', error); // Añadido log para más detalles
+                  res.status(500).json({ message: "Error interno del servidor", details: error.message });
+                }
+              }
 
 
 };
