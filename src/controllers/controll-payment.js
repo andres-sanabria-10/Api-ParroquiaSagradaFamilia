@@ -13,13 +13,10 @@ const generateReference = () => {
 
 // 🔐 Generar firma de ePayco (CORREGIDA)
 const generateEpaycoSignature = (referenceCode, amount) => {
-  // ⚠️ IMPORTANTE: El orden de los parámetros debe ser exacto
   const string = `${process.env.EPAYCO_P_CUST_ID_CLIENTE}^${process.env.EPAYCO_P_KEY}^${referenceCode}^${amount}^COP`;
-  
   console.log('🔐 String para firma:', string);
   const signature = crypto.createHash('md5').update(string).digest('hex');
   console.log('🔐 Firma generada:', signature);
-  
   return signature;
 };
 
@@ -38,6 +35,23 @@ const validateEpaycoSignature = (data) => {
   const signature = crypto.createHash('sha256').update(string).digest('hex');
 
   return signature === x_signature;
+};
+
+// 🔧 Mapear tipo de documento correctamente
+const mapDocumentType = (documentTypeName) => {
+  const typeMap = {
+    'Cédula de Ciudadanía': 'CC',
+    'Cedula de Ciudadania': 'CC',
+    'CC': 'CC',
+    'Tarjeta de Identidad': 'TI',
+    'TI': 'TI',
+    'Cédula de Extranjería': 'CE',
+    'CE': 'CE',
+    'Pasaporte': 'PPN',
+    'NIT': 'NIT',
+  };
+
+  return typeMap[documentTypeName] || 'CC'; // Default a CC
 };
 
 const createPayment = async (req, res) => {
@@ -101,12 +115,20 @@ const createPayment = async (req, res) => {
       });
     }
 
-    // 👤 Obtener datos del usuario
-    const user = await userModel.findById(userId);
+    // 👤 Obtener datos del usuario con populate
+    const user = await userModel.findById(userId).populate('typeDocument');
     
     if (!user) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
+
+    console.log('👤 Usuario encontrado:', {
+      name: user.name,
+      lastName: user.lastName,
+      email: user.mail,
+      documentType: user.typeDocument?.document_type_name,
+      documentNumber: user.documentNumber
+    });
 
     // 🔑 Generar referencia única
     const referenceCode = generateReference();
@@ -135,15 +157,23 @@ const createPayment = async (req, res) => {
     // 🔐 Generar firma para ePayco
     const signature = generateEpaycoSignature(referenceCode, amount);
 
-    // 📋 Construir datos para el checkout de ePayco (CORREGIDO)
+    // 🔧 Mapear tipo de documento correctamente
+    const mappedDocType = mapDocumentType(user.typeDocument?.document_type_name);
+    
+    console.log('📝 Tipo de documento:', {
+      original: user.typeDocument?.document_type_name,
+      mapped: mappedDocType
+    });
+
+    // 📋 Construir datos para el checkout de ePayco
     const checkoutData = {
-      // 🔹 CREDENCIALES (OBLIGATORIAS)
+      // 🔹 CREDENCIALES
       p_cust_id_cliente: process.env.EPAYCO_P_CUST_ID_CLIENTE,
       p_key: process.env.EPAYCO_P_KEY,
       
-      // 🔹 INFORMACIÓN DEL PAGO (OBLIGATORIAS)
+      // 🔹 INFORMACIÓN DEL PAGO
       p_amount: amount.toString(),
-      p_amount_base: amount.toString(), // Valor base sin IVA
+      p_amount_base: amount.toString(),
       p_tax: "0",
       p_tax_base: "0",
       p_currency_code: "COP",
@@ -151,30 +181,25 @@ const createPayment = async (req, res) => {
       p_reference: referenceCode,
       p_description: newPayment.description,
       
-      // 🔹 INFORMACIÓN DEL CLIENTE (OBLIGATORIAS)
+      // 🔹 INFORMACIÓN DEL CLIENTE (CORREGIDO)
       p_email: user.mail,
-      p_name_billing: user.name,
-      p_address_billing: "Calle 123", // Puedes poner una dirección genérica
+      p_name_billing: `${user.name} ${user.lastName}`, // ✅ Nombre completo
+      p_address_billing: "Carrera 1 # 1-1", // ✅ Dirección genérica válida
       p_mobilephone_billing: user.phone || "3001234567",
-      
-      // 🔹 TIPO Y NÚMERO DE DOCUMENTO
-      p_type_doc_billing: user.typeDocument?.document_type_name === 'Cédula de Ciudadanía' ? 'CC' : 'NIT',
+      p_type_doc_billing: mappedDocType, // ✅ Usar CC en lugar de NIT
       p_number_doc_billing: user.documentNumber,
       
-      // 🔹 URLs DE RESPUESTA (OBLIGATORIAS)
+      // 🔹 URLs DE RESPUESTA
       p_url_response: `${process.env.FRONTEND_URL}/payment/response`,
       p_url_confirmation: `${process.env.BACKEND_URL}/api/payment/confirm`,
       
       // 🔹 MODO DE PRUEBA
       p_test_request: process.env.EPAYCO_P_TESTING === 'true' ? 'TRUE' : 'FALSE',
       
-      // 🔹 EXTRAS (OPCIONALES)
+      // 🔹 EXTRAS
       p_extra1: userId.toString(),
       p_extra2: serviceType,
       p_extra3: serviceId.toString(),
-      
-      // 🔹 MÉTODO DE PAGO (OPCIONAL)
-      p_method_payment: "ALL", // ALL = Todos los métodos disponibles
     };
 
     console.log('✅ Pago creado en BD:', newPayment._id);
