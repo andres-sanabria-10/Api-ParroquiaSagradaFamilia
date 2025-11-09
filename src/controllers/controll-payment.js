@@ -1,4 +1,3 @@
-// controllers/controll-payment.js
 const Payment = require('../models/payment');
 const RequestMass = require('../models/requestMass');
 const RequestDeparture = require('../models/requestDeparture');
@@ -12,10 +11,16 @@ const generateReference = () => {
   return `PAR${timestamp}${random}`;
 };
 
-// 🔐 Generar firma de ePayco
+// 🔐 Generar firma de ePayco (CORREGIDA)
 const generateEpaycoSignature = (referenceCode, amount) => {
+  // ⚠️ IMPORTANTE: El orden de los parámetros debe ser exacto
   const string = `${process.env.EPAYCO_P_CUST_ID_CLIENTE}^${process.env.EPAYCO_P_KEY}^${referenceCode}^${amount}^COP`;
-  return crypto.createHash('md5').update(string).digest('hex');
+  
+  console.log('🔐 String para firma:', string);
+  const signature = crypto.createHash('md5').update(string).digest('hex');
+  console.log('🔐 Firma generada:', signature);
+  
+  return signature;
 };
 
 // 🔐 Validar firma de ePayco en confirmación
@@ -35,14 +40,8 @@ const validateEpaycoSignature = (data) => {
   return signature === x_signature;
 };
 
-/**
- * 💳 Crear un pago e iniciar checkout de ePayco
- * POST /api/payment/create
- * Body: { serviceType: 'mass' | 'certificate', serviceId: 'ID', amount: number, description: string }
- */
 const createPayment = async (req, res) => {
   try {
-    // 🔐 Obtener userId del token (middleware ya lo procesó)
     const userId = req.user._id;
     const { serviceType, serviceId, amount, description } = req.body;
 
@@ -71,7 +70,6 @@ const createPayment = async (req, res) => {
         return res.status(404).json({ error: 'Solicitud de misa no encontrada o no te pertenece' });
       }
 
-      // Verificar que no esté ya pagada
       if (service.status === 'Confirmada') {
         return res.status(400).json({ error: 'Esta solicitud ya fue confirmada' });
       }
@@ -84,13 +82,12 @@ const createPayment = async (req, res) => {
         return res.status(404).json({ error: 'Solicitud de partida no encontrada o no te pertenece' });
       }
 
-      // Verificar que no esté ya enviada
       if (service.status === 'Enviada') {
         return res.status(400).json({ error: 'Esta solicitud ya fue procesada' });
       }
     }
 
-    // 🔍 Verificar que no exista ya un pago pendiente o aprobado para este servicio
+    // 🔍 Verificar que no exista ya un pago pendiente o aprobado
     const existingPayment = await Payment.findOne({
       serviceId,
       serviceType,
@@ -138,44 +135,50 @@ const createPayment = async (req, res) => {
     // 🔐 Generar firma para ePayco
     const signature = generateEpaycoSignature(referenceCode, amount);
 
-    // 📋 Construir datos para el checkout de ePayco
+    // 📋 Construir datos para el checkout de ePayco (CORREGIDO)
     const checkoutData = {
-      // Credenciales
+      // 🔹 CREDENCIALES (OBLIGATORIAS)
       p_cust_id_cliente: process.env.EPAYCO_P_CUST_ID_CLIENTE,
       p_key: process.env.EPAYCO_P_KEY,
       
-      // Información del pago
+      // 🔹 INFORMACIÓN DEL PAGO (OBLIGATORIAS)
       p_amount: amount.toString(),
-      p_amount_base: amount.toString(),
+      p_amount_base: amount.toString(), // Valor base sin IVA
       p_tax: "0",
+      p_tax_base: "0",
       p_currency_code: "COP",
       p_signature: signature,
       p_reference: referenceCode,
       p_description: newPayment.description,
       
-      // Información del cliente
+      // 🔹 INFORMACIÓN DEL CLIENTE (OBLIGATORIAS)
       p_email: user.mail,
-      p_name: user.name,
-      p_lastname: user.lastName,
-      p_phone: user.phone || "",
-      p_doc_type: user.typeDocument?.document_type_name === 'Cédula de Ciudadanía' ? 'CC' : 'NIT',
-      p_doc_number: user.documentNumber,
+      p_name_billing: user.name,
+      p_address_billing: "Calle 123", // Puedes poner una dirección genérica
+      p_mobilephone_billing: user.phone || "3001234567",
       
-      // URLs de respuesta
+      // 🔹 TIPO Y NÚMERO DE DOCUMENTO
+      p_type_doc_billing: user.typeDocument?.document_type_name === 'Cédula de Ciudadanía' ? 'CC' : 'NIT',
+      p_number_doc_billing: user.documentNumber,
+      
+      // 🔹 URLs DE RESPUESTA (OBLIGATORIAS)
       p_url_response: `${process.env.FRONTEND_URL}/payment/response`,
       p_url_confirmation: `${process.env.BACKEND_URL}/api/payment/confirm`,
       
-      // Modo de prueba
-      p_test_request: process.env.EPAYCO_P_TESTING === 'true' ? 'true' : 'false',
+      // 🔹 MODO DE PRUEBA
+      p_test_request: process.env.EPAYCO_P_TESTING === 'true' ? 'TRUE' : 'FALSE',
       
-      // Extras
+      // 🔹 EXTRAS (OPCIONALES)
       p_extra1: userId.toString(),
       p_extra2: serviceType,
       p_extra3: serviceId.toString(),
+      
+      // 🔹 MÉTODO DE PAGO (OPCIONAL)
+      p_method_payment: "ALL", // ALL = Todos los métodos disponibles
     };
 
     console.log('✅ Pago creado en BD:', newPayment._id);
-    console.log('📋 Datos para checkout de ePayco:', checkoutData);
+    console.log('📋 Datos para checkout de ePayco:', JSON.stringify(checkoutData, null, 2));
 
     // 🎯 Devolver datos para que el frontend redirija al checkout
     res.status(201).json({
@@ -188,8 +191,8 @@ const createPayment = async (req, res) => {
         description: newPayment.description,
         status: newPayment.status,
       },
-      checkoutData, // El frontend usará esto para redirigir a ePayco
-      checkoutUrl: 'https://checkout.epayco.co/checkout.php', // URL base del checkout
+      checkoutData,
+      checkoutUrl: 'https://checkout.epayco.co/checkout.php',
     });
 
   } catch (error) {
@@ -201,6 +204,7 @@ const createPayment = async (req, res) => {
   }
 };
 
+// ... resto del código (confirmPayment, etc.)
 /**
  * ✅ Confirmar pago - Webhook de ePayco
  * POST /api/payment/confirm
