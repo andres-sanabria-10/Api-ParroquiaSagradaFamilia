@@ -2,6 +2,7 @@ const RequestMass = require('../models/requestMass');
 const MassSchedule = require('../models/massSchedule');
 const { verifyToken } = require('../helpers/gerate-token');
 const userModel = require('../models/user');
+const { encrypt } = require('../helpers/handleBcrypt');
 
 module.exports = {
 
@@ -160,5 +161,60 @@ module.exports = {
         } catch (error) {
             res.status(500).json({ mensaje: "Error al eliminar la solicitud", error: error.message });
         }
-    }
+    },
+
+
+    adminCreateMassRequest: async (req, res) => {
+        try {
+          const {
+            // Datos del Usuario
+            documentNumber,
+            typeDocument,
+            name,
+            lastName,
+            mail,
+            birthdate,
+            // Datos de la Misa
+            date,
+            time,
+            intention
+          } = req.body;
+    
+          // 1. Buscar al usuario por DNI
+          let user = await User.findOne({ documentNumber: documentNumber });
+    
+          // 2. Si el usuario NO existe, lo creamos
+          if (!user) {
+            if (!name || !lastName || !mail || !birthdate || !typeDocument) {
+              return res.status(400).json({ message: "Faltan datos del solicitante (incluyendo tipo de doc.) para crear el nuevo usuario." });
+            }
+            const tempPassword = await encrypt(documentNumber);
+            const newUser = new User({
+              name, lastName, mail, birthdate, documentNumber, typeDocument,
+              password: tempPassword, role: 'Usuario'
+            });
+            user = await newUser.save();
+          }
+    
+          // 3. Crear la solicitud de misa
+          const newMassRequest = new RequestMass({
+            applicant: user._id, // Enlazamos al usuario (encontrado o creado)
+            date,
+            time,
+            intention,
+            status: 'Pendiente' // La secretaria la crea, pero debe ser aprobada (por el pago)
+          });
+    
+          const savedRequest = await newMassRequest.save();
+          res.status(201).json(savedRequest);
+    
+        } catch (error) {
+          if (error.code === 11000) { 
+            return res.status(409).json({ message: "Error de duplicado: El DNI o el correo ya están registrados.", details: error.message });
+          }
+          res.status(500).json({ message: error.message });
+        }
+      }
+
+
 };
