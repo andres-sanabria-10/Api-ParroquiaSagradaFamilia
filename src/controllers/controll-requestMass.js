@@ -199,7 +199,7 @@ module.exports = {
                     // ✨ CAMBIO: Usamos 'userModel' en lugar de 'User'
                     const newUser = new userModel({ 
                       name, lastName, mail, birthdate, documentNumber, typeDocument,
-                      password: tempPassword, role: 'feligres' // Tu rol por defecto parece ser 'Usuario', cámbialo si es necesario
+                      password: tempPassword, role: 'Usuario'
                     });
                     user = await newUser.save();
                 }
