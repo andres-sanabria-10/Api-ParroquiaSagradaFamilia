@@ -128,23 +128,22 @@ getUserProfile: async (req, res) => {
 
 
   getUserByDocumentNumber: async (req, res) => {
-      try {
-        // 1. Buscamos al usuario por el DNI que viene en la URL
-        const user = await User.findOne({ documentNumber: req.params.documentNumber })
-                                .select('name lastName documentNumber mail role birthdate'); // Seleccionamos solo los campos necesarios
-  
-        if (!user) {
-          // 2. Si no existe, enviamos un 404. Esto es importante para el frontend.
-          return res.status(404).json({ message: 'Usuario no encontrado' });
-        }
-     
-        // 3. Si existe, enviamos sus datos
-        res.status(200).json(user);
-  
-      } catch (error) {
-        console.error('Error al buscar usuario por DNI:', error);
-        res.status(500).json({ message: 'Error interno del servidor', details: error.message });
-      }
+      try {
+        // 1. Buscamos al usuario y poblamos el campo 'typeDocument'
+        const user = await User.findOne({ documentNumber: req.params.documentNumber })
+                                .populate('typeDocument') // ✨ ESTE ES EL CAMBIO
+                                .select('name lastName documentNumber mail role birthdate typeDocument'); 
+    
+        if (!user) {
+          return res.status(404).json({ message: 'Usuario no encontrado' });
+        }
+        
+        res.status(200).json(user);
+    
+      } catch (error) {
+        console.error('Error al buscar usuario por DNI:', error);
+        res.status(500).json({ message: 'Error interno del servidor', details: error.message });
+      }
     },
 
 };

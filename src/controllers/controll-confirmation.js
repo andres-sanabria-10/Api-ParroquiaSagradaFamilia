@@ -20,44 +20,26 @@ module.exports = {
   // Crear una nueva confirmación
   createConfirmation: async (req, res) => {
       try {
-        // 1. Validación de Fecha
         const confirmationDate = new Date(req.body.confirmationDate);
         const currentDate = new Date();
         if (confirmationDate > currentDate) {
           return res.status(400).json({ message: "La fecha de confirmación no puede ser futura" });
         }
   
-        // 2. Buscar al usuario por DNI
         let user = await User.findOne({ documentNumber: req.body.documentNumber });
   
-        // 3. Si el usuario NO existe, lo creamos
         if (!user) {
-          // Obtenemos los datos necesarios del formulario
-          const { name, lastName, mail, birthdate, documentNumber } = req.body;
-          if (!name || !lastName || !mail || !birthdate || !documentNumber) {
-            return res.status(400).json({ message: "Faltan datos del confirmado (nombre, apellido, email, fecha de nac.) para crear el nuevo usuario." });
+          const { name, lastName, mail, birthdate, documentNumber, typeDocument } = req.body;
+          if (!name || !lastName || !mail || !birthdate || !documentNumber || !typeDocument) {
+            return res.status(400).json({ message: "Faltan datos del confirmado (incluyendo tipo de doc.) para crear el nuevo usuario." });
           }
-          
-          // Creamos una contraseña temporal
           const tempPassword = await encrypt(documentNumber);
-  
-          const newUser = new User({
-            name,
-            lastName,
-            mail,
-            birthdate,
-            documentNumber,
-            password: tempPassword,
-            role: 'feligres' // Asignamos rol por defecto
-          });
-  
-          // Guardamos el nuevo usuario
+          const newUser = new User({ name, lastName, mail, birthdate, documentNumber, typeDocument, password: tempPassword, role: 'feligres' });
           user = await newUser.save();
         }
   
-        // 4. Preparar los datos SÓLO para el modelo Confirmation
         const finalConfirmationData = {
-          confirmed: user._id, // El ID del usuario (encontrado o recién creado)
+          confirmed: user._id,
           confirmationDate: req.body.confirmationDate,
           fatherName: req.body.fatherName,
           motherName: req.body.motherName,
@@ -65,14 +47,12 @@ module.exports = {
           baptizedParish: req.body.baptizedParish,
         };
   
-        // 5. Guardar la nueva partida de confirmación
         const newConfirmation = new Confirmation(finalConfirmationData);
         const savedConfirmation = await newConfirmation.save();
         res.status(201).json(savedConfirmation);
   
       } catch (error) {
-        // Manejamos un error común: si el DNI o el Email ya existen al crear el usuario
-        if (error.code === 11000) { 
+        if (error.code === 11000) { 
           return res.status(409).json({ message: "Error de duplicado: El DNI o el correo ya están registrados.", details: error.message });
         }
         res.status(500).json({ message: error.message });

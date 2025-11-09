@@ -32,70 +32,50 @@ getAllMarriages : async (req, res) => {
 createMarriage: async (req, res) => {
       try {
         const {
-          // Datos del Esposo
-          husbandDocumentNumber,
-          husbandName,
-          husbandLastName,
-          husbandMail,
-          husbandBirthdate,
-          // Datos de la Esposa
-          wifeDocumentNumber,
-          wifeName,
-          wifeLastName,
-          wifeMail,
-          wifeBirthdate,
-          // Datos del Matrimonio
-          ...marriageSpecificData // El resto: marriageDate, father_husband, godfather1, etc.
+          husbandDocumentNumber, husbandName, husbandLastName, husbandMail, husbandBirthdate, husbandTypeDocument,
+          wifeDocumentNumber, wifeName, wifeLastName, wifeMail, wifeBirthdate, wifeTypeDocument,
+          ...marriageSpecificData 
         } = req.body;
   
-        // 1. Validar que los DNI no sean iguales
         if (husbandDocumentNumber === wifeDocumentNumber) {
           return res.status(400).json({ message: "El número de documento del esposo y la esposa no puede ser el mismo" });
         }
   
-        // --- 2. Procesar al Esposo ---
+        // --- Procesar al Esposo ---
         let husband = await User.findOne({ documentNumber: husbandDocumentNumber });
-        if (!husband) { // Si no existe, lo creamos
-          if (!husbandName || !husbandLastName || !husbandMail || !husbandBirthdate) {
-            return res.status(400).json({ message: "Faltan datos del esposo para crear el nuevo usuario." });
+        if (!husband) {
+          if (!husbandName || !husbandLastName || !husbandMail || !husbandBirthdate || !husbandTypeDocument) {
+            return res.status(400).json({ message: "Faltan datos del esposo (incluyendo tipo de doc.) para crear el nuevo usuario." });
           }
           const tempPassword = await encrypt(husbandDocumentNumber);
           const newHusband = new User({
-            name: husbandName,
-            lastName: husbandLastName,
-            mail: husbandMail,
-            birthdate: husbandBirthdate,
-            documentNumber: husbandDocumentNumber,
-            password: tempPassword,
-            role: 'feligres'
+            name: husbandName, lastName: husbandLastName, mail: husbandMail, birthdate: husbandBirthdate, 
+            documentNumber: husbandDocumentNumber, typeDocument: husbandTypeDocument, 
+            password: tempPassword, role: 'feligres'
           });
           husband = await newHusband.save();
         }
   
-        // --- 3. Procesar a la Esposa ---
+        // --- Procesar a la Esposa ---
         let wife = await User.findOne({ documentNumber: wifeDocumentNumber });
-        if (!wife) { // Si no existe, la creamos
-          if (!wifeName || !wifeLastName || !wifeMail || !wifeBirthdate) {
-            return res.status(400).json({ message: "Faltan datos de la esposa para crear el nuevo usuario." });
+        if (!wife) {
+          if (!wifeName || !wifeLastName || !wifeMail || !wifeBirthdate || !wifeTypeDocument) {
+            return res.status(400).json({ message: "Faltan datos de la esposa (incluyendo tipo de doc.) para crear el nuevo usuario." });
           }
           const tempPassword = await encrypt(wifeDocumentNumber);
           const newWife = new User({
-            name: wifeName,
-            lastName: wifeLastName,
-            mail: wifeMail,
-            birthdate: wifeBirthdate,
-            documentNumber: wifeDocumentNumber,
-            password: tempPassword,
-            role: 'feligres'
+            name: wifeName, lastName: wifeLastName, mail: wifeMail, birthdate: wifeBirthdate,
+            documentNumber: wifeDocumentNumber, typeDocument: wifeTypeDocument,
+            password: tempPassword, role: 'feligres'
           });
           wife = await newWife.save();
         }
   
-        // 4. Preparar y guardar la partida de matrimonio
+        // Preparar y guardar la partida de matrimonio
         const finalMarriageData = {
-          ...marriageSpecificData, // marriageDate, father_husband, etc.
-          husband: husband._id, // Asignamos el ID del esposo
-          wife: wife._id // Asignamos el ID de la esposa
+          ...marriageSpecificData,
+          husband: husband._id,
+          wife: wife._id 
         };
   
         const newMarriage = new Marriage(finalMarriageData);
