@@ -178,7 +178,7 @@ const createPayment = async (req, res) => {
 
     // 🚀 Hacer POST a la API de ePayco
     const epaycoResponse = await axios.post(
-      'https://api.secure.payco.co/payment/process',
+      'https://secure.epayco.co/validation/v1/reference/create',
       epaycoData,
       {
         headers: {
@@ -190,7 +190,11 @@ const createPayment = async (req, res) => {
     console.log('✅ Respuesta de ePayco:', epaycoResponse.data);
 
     // ✅ ePayco devuelve una URL de pago
-    if (epaycoResponse.data.success && epaycoResponse.data.data.url_payment) {
+    if (epaycoResponse.data.success && epaycoResponse.data.data) {
+      // La URL de pago se construye con el ref_payco que devuelve ePayco
+      const ref_payco = epaycoResponse.data.data.ref_payco;
+      const paymentUrl = `https://checkout.epayco.co/checkout?ref_payco=${ref_payco}`;
+      
       return res.status(201).json({
         success: true,
         message: 'Pago creado exitosamente',
@@ -201,7 +205,7 @@ const createPayment = async (req, res) => {
           description: newPayment.description,
           status: newPayment.status,
         },
-        paymentUrl: epaycoResponse.data.data.url_payment, // ⬅️ URL para redirigir
+        paymentUrl: paymentUrl,
       });
     } else {
       throw new Error('ePayco no devolvió una URL de pago válida');
