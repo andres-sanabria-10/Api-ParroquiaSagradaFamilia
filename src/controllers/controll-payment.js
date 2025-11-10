@@ -3,7 +3,6 @@ const RequestMass = require('../models/requestMass');
 const RequestDeparture = require('../models/requestDeparture');
 const userModel = require('../models/user');
 const crypto = require('crypto');
-const axios = require('axios'); // ⬅️ Instalar: npm install axios
 
 // 🔧 Generar referencia única
 const generateReference = () => {
@@ -29,7 +28,7 @@ const mapDocumentType = (documentTypeName) => {
 };
 
 /**
- * 💳 Crear pago y procesar con API de ePayco
+ * 💳 Crear pago y procesar con Checkout de ePayco
  */
 const createPayment = async (req, res) => {
   try {
@@ -135,115 +134,67 @@ const createPayment = async (req, res) => {
       phone: user.phone
     });
 
-    // 🌐 Procesar pago con la API de ePayco
-    const epaycoData = {
-      // Credenciales
-      public_key: process.env.EPAYCO_P_PUBLIC_KEY,
+    // 🌐 Construir URL de checkout directamente (sin llamar API)
+    const checkoutUrl = new URL('https://checkout.epayco.co/checkout');
 
-      // Información de la transacción
-      invoice: referenceCode,
-      description: newPayment.description,
-      value: amount.toString(),
-      tax: "0",
-      tax_base: "0",
-      currency: "cop",
+    // Parámetros requeridos
+    checkoutUrl.searchParams.append('public-key', process.env.EPAYCO_P_PUBLIC_KEY);
+    checkoutUrl.searchParams.append('invoice', referenceCode);
+    checkoutUrl.searchParams.append('description', newPayment.description);
+    checkoutUrl.searchParams.append('amount', amount.toString());
+    checkoutUrl.searchParams.append('tax', '0');
+    checkoutUrl.searchParams.append('tax_base', '0');
+    checkoutUrl.searchParams.append('currency', 'cop');
+    checkoutUrl.searchParams.append('country', 'co');
+    checkoutUrl.searchParams.append('lang', 'es');
 
-      // URLs de respuesta
-      url_response: `${process.env.FRONTEND_URL}/payment/response`,
-      url_confirmation: `${process.env.BACKEND_URL}/api/payment/confirm`,
+    // URLs de respuesta
+    checkoutUrl.searchParams.append('external', 'true');
+    checkoutUrl.searchParams.append('response', `${process.env.FRONTEND_URL}/payment/response`);
+    checkoutUrl.searchParams.append('confirmation', `${process.env.BACKEND_URL}/api/payment/confirm`);
 
-      // Información del cliente
-      name_billing: `${user.name} ${user.lastName}`,
-      address_billing: "Carrera 1 # 1-1",
-      type_doc_billing: mappedDocType,
-      mobilephone_billing: user.phone || "3001234567",
-      number_doc_billing: user.documentNumber,
+    // Información del cliente (nota los guiones en los nombres)
+    checkoutUrl.searchParams.append('name-billing', `${user.name} ${user.lastName}`);
+    checkoutUrl.searchParams.append('address-billing', 'Carrera 1 # 1-1');
+    checkoutUrl.searchParams.append('type-doc-billing', mappedDocType);
+    checkoutUrl.searchParams.append('mobilephone-billing', user.phone || '3001234567');
+    checkoutUrl.searchParams.append('number-doc-billing', user.documentNumber);
+    checkoutUrl.searchParams.append('email-billing', user.mail);
 
-      // Email
-      email_billing: user.mail,
+    // Extras
+    checkoutUrl.searchParams.append('extra1', userId.toString());
+    checkoutUrl.searchParams.append('extra2', serviceType);
+    checkoutUrl.searchParams.append('extra3', serviceId.toString());
 
-      // Modo de prueba
-      test: process.env.EPAYCO_P_TESTING === 'true',
+    // Modo prueba
+    checkoutUrl.searchParams.append('test', process.env.EPAYCO_P_TESTING === 'true' ? 'true' : 'false');
 
-      // Extras
-      extra1: userId.toString(),
-      extra2: serviceType,
-      extra3: serviceId.toString(),
+    const paymentUrl = checkoutUrl.toString();
+    console.log('🌐 URL de checkout generada:', paymentUrl);
 
-      // Método de pago (opcional, si no se especifica muestra todos)
-      // method_confirmation: "GET", // o "POST"
-    };
-
-    console.log('📤 Enviando a ePayco:', JSON.stringify(epaycoData, null, 2));
-
-    // 🚀 Hacer POST a la API de ePayco
-    const epaycoResponse = await axios.get(
-      'https://secure.epayco.co/validation/v1/reference/create',
-      {
-        params: epaycoData,  // Los datos van como query params
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    console.log('✅ Respuesta de ePayco:', epaycoResponse.data);
-
-    // ✅ ePayco devuelve una URL de pago
-    if (epaycoResponse.data.success && epaycoResponse.data.data) {
-      // La URL de pago se construye con el ref_payco que devuelve ePayco
-      const ref_payco = epaycoResponse.data.data.ref_payco;
-      const paymentUrl = `https://checkout.epayco.co/checkout?ref_payco=${ref_payco}`;
-
-      return res.status(201).json({
-        success: true,
-        message: 'Pago creado exitosamente',
-        payment: {
-          id: newPayment._id,
-          referenceCode: newPayment.referenceCode,
-          amount: newPayment.amount,
-          description: newPayment.description,
-          status: newPayment.status,
-        },
-        paymentUrl: paymentUrl,
-      });
-    } else {
-      throw new Error('ePayco no devolvió una URL de pago válida');
-    }
+    // ✅ Retornar la URL directamente
+    return res.status(201).json({
+      success: true,
+      message: 'Pago creado exitosamente',
+      payment: {
+        id: newPayment._id,
+        referenceCode: newPayment.referenceCode,
+        amount: newPayment.amount,
+        description: newPayment.description,
+        status: newPayment.status,
+      },
+      paymentUrl: paymentUrl,
+    });
 
   } catch (error) {
     console.error('💥 Error en createPayment:', error);
 
     // Manejo detallado de errores
-    let errorMessage = 'Error desconocido';
-    let errorDetails = {};
-
-    if (error.response) {
-      // Error de respuesta de ePayco
-      console.error('📡 Error de ePayco:', error.response.data);
-      errorMessage = 'Error al procesar el pago con ePayco';
-      errorDetails = {
-        status: error.response.status,
-        data: error.response.data,
-        message: error.response.data?.message || error.response.statusText
-      };
-    } else if (error.request) {
-      // Error de red (no hubo respuesta)
-      console.error('🌐 Error de red:', error.message);
-      errorMessage = 'Error de conexión con ePayco';
-      errorDetails = {
-        message: error.message,
-        code: error.code
-      };
-    } else {
-      // Error en la configuración de la petición
-      console.error('⚙️ Error de configuración:', error.message);
-      errorMessage = error.message;
-      errorDetails = {
-        message: error.message,
-        stack: error.stack?.split('\n').slice(0, 3)
-      };
-    }
+    let errorMessage = 'Error al crear el pago';
+    let errorDetails = {
+      message: error.message,
+      stack: error.stack?.split('\n').slice(0, 3)
+    };
 
     res.status(500).json({
       error: errorMessage,
