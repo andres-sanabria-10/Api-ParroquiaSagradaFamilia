@@ -48,6 +48,14 @@ const createPayment = async (req, res) => {
       return res.status(400).json({ error: 'Monto inválido' });
     }
 
+    // 💰 Validar monto mínimo para ePayco
+    if (amount < 1000) {
+      return res.status(400).json({ 
+        error: 'Monto muy bajo',
+        details: 'El monto mínimo para procesar un pago es de $1,000 COP'
+      });
+    }
+
     // 🔍 Verificar que el servicio existe y pertenece al usuario
     let service;
     let onModel;
@@ -96,6 +104,14 @@ const createPayment = async (req, res) => {
 
     if (!user) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    // Validar que el usuario tenga email
+    if (!user.mail) {
+      return res.status(400).json({ 
+        error: 'Usuario sin email registrado',
+        details: 'Por favor, actualiza tu perfil con un email válido'
+      });
     }
 
     // 🔑 Generar referencia única
@@ -148,7 +164,7 @@ const createPayment = async (req, res) => {
 
     console.log('🔑 Public Key:', publicKey);
 
-    // 📦 DEVOLVER DATOS PARA EL FORMULARIO (no URL)
+    // 📦 DATOS PARA EL CHECKOUT DE EPAYCO
     const paymentData = {
       // Configuración de ePayco
       publicKey: publicKey,
@@ -157,8 +173,8 @@ const createPayment = async (req, res) => {
       invoice: referenceCode,
       description: newPayment.description,
       amount: amount.toString(),
-      taxBase: amount.toString(),
-      tax: '0',
+      taxBase: '0', // Base gravable (0 si no hay impuestos)
+      tax: '0', // IVA
       currency: 'cop',
       country: 'co',
       
@@ -166,11 +182,11 @@ const createPayment = async (req, res) => {
       responseUrl: `${process.env.FRONTEND_URL}/payment/response`,
       confirmationUrl: `${process.env.BACKEND_URL}/api/payment/confirm`,
       
-      // Información del cliente
+      // Información del cliente (TODOS LOS CAMPOS REQUERIDOS)
       nameFactura: `${user.name} ${user.lastName}`,
       emailFactura: user.mail,
       mobilePhoneFactura: user.phone || '3001234567',
-      addressFactura: 'Carrera 1 # 1-1',
+      addressFactura: user.address || 'Calle 1 # 1-1',
       typeDocFactura: mappedDocType,
       numberDocFactura: user.documentNumber,
       
@@ -188,7 +204,7 @@ const createPayment = async (req, res) => {
 
     console.log('📦 Payment data preparado:', paymentData);
 
-    // ✅ Retornar los datos para que el frontend cree el formulario
+    // ✅ Retornar los datos para que el frontend use el checkout
     return res.status(201).json({
       success: true,
       message: 'Pago creado exitosamente',
@@ -199,7 +215,7 @@ const createPayment = async (req, res) => {
         description: newPayment.description,
         status: newPayment.status,
       },
-      epaycoData: paymentData, // 👈 Datos para el formulario
+      epaycoData: paymentData,
     });
 
   } catch (error) {
