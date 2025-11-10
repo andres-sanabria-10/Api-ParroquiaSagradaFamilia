@@ -56,7 +56,7 @@ const createPayment = async (req, res) => {
     if (serviceType === 'mass') {
       service = await RequestMass.findOne({ _id: serviceId, applicant: userId });
       onModel = 'RequestMass';
-      
+
       if (!service) {
         return res.status(404).json({ error: 'Solicitud de misa no encontrada o no te pertenece' });
       }
@@ -68,7 +68,7 @@ const createPayment = async (req, res) => {
     } else if (serviceType === 'certificate') {
       service = await RequestDeparture.findOne({ _id: serviceId, applicant: userId });
       onModel = 'RequestDeparture';
-      
+
       if (!service) {
         return res.status(404).json({ error: 'Solicitud de partida no encontrada o no te pertenece' });
       }
@@ -86,15 +86,15 @@ const createPayment = async (req, res) => {
     });
 
     if (existingPayment) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Ya existe un pago pendiente o aprobado para este servicio',
-        payment: existingPayment 
+        payment: existingPayment
       });
     }
 
     // 👤 Obtener datos del usuario
     const user = await userModel.findById(userId).populate('typeDocument');
-    
+
     if (!user) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
@@ -139,7 +139,7 @@ const createPayment = async (req, res) => {
     const epaycoData = {
       // Credenciales
       public_key: process.env.EPAYCO_P_PUBLIC_KEY,
-      
+
       // Información de la transacción
       invoice: referenceCode,
       description: newPayment.description,
@@ -147,29 +147,29 @@ const createPayment = async (req, res) => {
       tax: "0",
       tax_base: "0",
       currency: "cop",
-      
+
       // URLs de respuesta
       url_response: `${process.env.FRONTEND_URL}/payment/response`,
       url_confirmation: `${process.env.BACKEND_URL}/api/payment/confirm`,
-      
+
       // Información del cliente
       name_billing: `${user.name} ${user.lastName}`,
       address_billing: "Carrera 1 # 1-1",
       type_doc_billing: mappedDocType,
       mobilephone_billing: user.phone || "3001234567",
       number_doc_billing: user.documentNumber,
-      
+
       // Email
       email_billing: user.mail,
-      
+
       // Modo de prueba
       test: process.env.EPAYCO_P_TESTING === 'true',
-      
+
       // Extras
       extra1: userId.toString(),
       extra2: serviceType,
       extra3: serviceId.toString(),
-      
+
       // Método de pago (opcional, si no se especifica muestra todos)
       // method_confirmation: "GET", // o "POST"
     };
@@ -177,10 +177,10 @@ const createPayment = async (req, res) => {
     console.log('📤 Enviando a ePayco:', JSON.stringify(epaycoData, null, 2));
 
     // 🚀 Hacer POST a la API de ePayco
-    const epaycoResponse = await axios.post(
+    const epaycoResponse = await axios.get(
       'https://secure.epayco.co/validation/v1/reference/create',
-      epaycoData,
       {
+        params: epaycoData,  // Los datos van como query params
         headers: {
           'Content-Type': 'application/json',
         },
@@ -194,7 +194,7 @@ const createPayment = async (req, res) => {
       // La URL de pago se construye con el ref_payco que devuelve ePayco
       const ref_payco = epaycoResponse.data.data.ref_payco;
       const paymentUrl = `https://checkout.epayco.co/checkout?ref_payco=${ref_payco}`;
-      
+
       return res.status(201).json({
         success: true,
         message: 'Pago creado exitosamente',
@@ -213,7 +213,7 @@ const createPayment = async (req, res) => {
 
   } catch (error) {
     console.error('💥 Error en createPayment:', error);
-    
+
     // Manejo detallado de errores
     let errorMessage = 'Error desconocido';
     let errorDetails = {};
@@ -245,7 +245,7 @@ const createPayment = async (req, res) => {
       };
     }
 
-    res.status(500).json({ 
+    res.status(500).json({
       error: errorMessage,
       details: errorDetails
     });
@@ -291,7 +291,7 @@ const confirmPayment = async (req, res) => {
     //   .createHash('sha256')
     //   .update(`${x_cust_id_cliente}^${process.env.EPAYCO_P_KEY}^${x_ref_payco}^${x_transaction_id}^${x_amount}^${x_currency_code}`)
     //   .digest('hex');
-    
+
     // if (expectedSignature !== x_signature) {
     //   console.error('❌ Firma inválida');
     //   return res.status(403).json({ error: 'Firma inválida' });
@@ -347,9 +347,9 @@ const confirmPayment = async (req, res) => {
 
   } catch (error) {
     console.error('💥 Error en confirmPayment:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Error al confirmar el pago',
-      details: error.message 
+      details: error.message
     });
   }
 };
@@ -373,9 +373,9 @@ const getPaymentHistory = async (req, res) => {
 
   } catch (error) {
     console.error('💥 Error en getPaymentHistory:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Error al obtener historial',
-      details: error.message 
+      details: error.message
     });
   }
 };
@@ -403,9 +403,9 @@ const getPaymentById = async (req, res) => {
 
   } catch (error) {
     console.error('💥 Error en getPaymentById:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Error al consultar el pago',
-      details: error.message 
+      details: error.message
     });
   }
 };
@@ -433,9 +433,9 @@ const getPaymentStatus = async (req, res) => {
 
   } catch (error) {
     console.error('💥 Error en getPaymentStatus:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Error al consultar estado del pago',
-      details: error.message 
+      details: error.message
     });
   }
 };
