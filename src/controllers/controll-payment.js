@@ -134,42 +134,24 @@ const createPayment = async (req, res) => {
       phone: user.phone
     });
 
-    // 🔐 Variables de entorno necesarias (según tu .env)
-    const custIdCliente = process.env.EPAYCO_P_CUST_ID_CLIENTE;
-    const pKey = process.env.EPAYCO_P_KEY;
+    // 🔐 Variables de entorno necesarias
     const publicKey = process.env.EPAYCO_P_PUBLIC_KEY;
 
-    // Validar que existan las credenciales
-    if (!custIdCliente || !pKey || !publicKey) {
-      console.error('❌ Credenciales de ePayco no configuradas');
-      console.error('Faltantes:', {
-        custIdCliente: !!custIdCliente,
-        pKey: !!pKey,
-        publicKey: !!publicKey
-      });
+    // Validar que exista la public key
+    if (!publicKey) {
+      console.error('❌ Public Key de ePayco no configurada');
       return res.status(500).json({ 
         error: 'Error de configuración del sistema de pagos',
         details: 'Contacte al administrador'
       });
     }
 
-    // 🔐 Generar firma de seguridad
-    // Formato: p_cust_id_cliente^p_key^p_id_invoice^p_amount^p_currency_code
-    const signatureString = `${custIdCliente}^${pKey}^${referenceCode}^${amount}^COP`;
-    const signature = crypto.createHash('sha256').update(signatureString).digest('hex');
+    console.log('🔑 Public Key:', publicKey);
 
-    console.log('🔐 Firma generada:', {
-      custIdCliente,
-      referenceCode,
-      amount,
-      signature: signature.substring(0, 10) + '...'
-    });
+    // 🌐 Construir URL de checkout ESTÁNDAR de ePayco
+    const checkoutUrl = new URL('https://checkout.epayco.co/checkout.js');
 
-    // 🌐 Construir URL de checkout correcta
-    const checkoutUrl = new URL('https://checkout.epayco.co/');
-
-    // ⚠️ PARÁMETROS CORRECTOS SEGÚN DOCUMENTACIÓN EPAYCO
-    // Parámetros básicos (SOLO public_key, NO p_key ni p_cust_id_cliente)
+    // ⚠️ PARÁMETROS CHECKOUT ESTÁNDAR (sin prefijo p_)
     checkoutUrl.searchParams.append('public-key', publicKey);
     checkoutUrl.searchParams.append('invoice', referenceCode);
     checkoutUrl.searchParams.append('description', newPayment.description);
@@ -183,7 +165,7 @@ const createPayment = async (req, res) => {
     checkoutUrl.searchParams.append('response', `${process.env.FRONTEND_URL}/payment/response`);
     checkoutUrl.searchParams.append('confirmation', `${process.env.BACKEND_URL}/api/payment/confirm`);
 
-    // Información del cliente
+    // Información del cliente (con guiones)
     checkoutUrl.searchParams.append('name-billing', `${user.name} ${user.lastName}`);
     checkoutUrl.searchParams.append('email-billing', user.mail);
     checkoutUrl.searchParams.append('mobilephone-billing', user.phone || '3001234567');
@@ -198,8 +180,11 @@ const createPayment = async (req, res) => {
 
     // Idioma y modo prueba
     checkoutUrl.searchParams.append('lang', 'es');
-    checkoutUrl.searchParams.append('external', 'true');
-    checkoutUrl.searchParams.append('test', process.env.EPAYCO_TESTING === 'true' ? 'true' : 'false');
+    checkoutUrl.searchParams.append('external', 'false');
+    checkoutUrl.searchParams.append('test', process.env.EPAYCO_P_TESTING === 'true' ? 'true' : 'false');
+
+    // Método de pago - acepta todos
+    checkoutUrl.searchParams.append('methodsDisable', '[]');
 
     const paymentUrl = checkoutUrl.toString();
     console.log('🌐 URL de checkout generada:', paymentUrl);
@@ -270,27 +255,32 @@ const confirmPayment = async (req, res) => {
     }
 
     // 🔐 Validar firma (IMPORTANTE EN PRODUCCIÓN)
-    const privateKey = process.env.EPAYCO_PRIVATE_KEY;
-    const expectedSignature = crypto
-      .createHash('sha256')
-      .update(`${x_cust_id_cliente}^${privateKey}^${x_ref_payco}^${x_transaction_id}^${x_amount}^${x_currency_code}`)
-      .digest('hex');
+    const pKey = process.env.EPAYCO_P_KEY;
+    
+    if (pKey) {
+      const expectedSignature = crypto
+        .createHash('sha256')
+        .update(`${x_cust_id_cliente}^${pKey}^${x_ref_payco}^${x_transaction_id}^${x_amount}^${x_currency_code}`)
+        .digest('hex');
 
-    console.log('🔐 Validación de firma:', {
-      esperada: expectedSignature,
-      recibida: x_signature,
-      coincide: expectedSignature === x_signature
-    });
+      console.log('🔐 Validación de firma:', {
+        esperada: expectedSignature,
+        recibida: x_signature,
+        coincide: expectedSignature === x_signature
+      });
 
-    if (expectedSignature !== x_signature) {
-      console.error('❌ Firma inválida');
-      
-      // En modo prueba, permitir continuar pero loguear advertencia
-      if (process.env.EPAYCO_TESTING !== 'true') {
-        return res.status(200).send('OK'); // No bloquear el webhook
-      } else {
-        console.warn('⚠️ Firma inválida pero permitiendo en modo prueba');
+      if (expectedSignature !== x_signature) {
+        console.error('❌ Firma inválida');
+        
+        // En modo prueba, permitir continuar pero loguear advertencia
+        if (process.env.EPAYCO_P_TESTING !== 'true') {
+          return res.status(200).send('OK'); // No bloquear el webhook
+        } else {
+          console.warn('⚠️ Firma inválida pero permitiendo en modo prueba');
+        }
       }
+    } else {
+      console.warn('⚠️ No se puede validar firma - EPAYCO_P_KEY no configurada');
     }
 
     // 📝 Actualizar datos del pago
