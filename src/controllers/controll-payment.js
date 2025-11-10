@@ -134,40 +134,61 @@ const createPayment = async (req, res) => {
       phone: user.phone
     });
 
-    // 🌐 Construir URL de checkout directamente (sin llamar API)
-    const checkoutUrl = new URL('https://checkout.epayco.co/checkout');
+    // 🔐 Generar firma de seguridad
+    const p_cust_id_cliente = process.env.EPAYCO_P_CUST_ID;
+    const p_key = process.env.EPAYCO_P_KEY;
+    
+    // Formato: p_cust_id_cliente^p_key^p_id_invoice^p_amount^p_currency_code
+    const signatureString = `${p_cust_id_cliente}^${p_key}^${referenceCode}^${amount}^COP`;
+    const signature = crypto.createHash('sha256').update(signatureString).digest('hex');
 
-    // Parámetros requeridos
-    checkoutUrl.searchParams.append('public-key', process.env.EPAYCO_P_PUBLIC_KEY);
-    checkoutUrl.searchParams.append('invoice', referenceCode);
-    checkoutUrl.searchParams.append('description', newPayment.description);
-    checkoutUrl.searchParams.append('amount', amount.toString());
-    checkoutUrl.searchParams.append('tax', '0');
-    checkoutUrl.searchParams.append('tax_base', '0');
-    checkoutUrl.searchParams.append('currency', 'cop');
-    checkoutUrl.searchParams.append('country', 'co');
-    checkoutUrl.searchParams.append('lang', 'es');
+    console.log('🔐 Firma generada:', {
+      signatureString: signatureString.replace(p_key, '***'),
+      signature
+    });
+
+    // 🌐 Construir URL de checkout correcta
+    const checkoutUrl = new URL('https://checkout.epayco.co/');
+
+    // ⚠️ PARÁMETROS CORRECTOS SEGÚN DOCUMENTACIÓN EPAYCO
+    // Parámetros básicos
+    checkoutUrl.searchParams.append('p_cust_id_cliente', p_cust_id_cliente);
+    checkoutUrl.searchParams.append('p_key', p_key);
+    checkoutUrl.searchParams.append('p_id_invoice', referenceCode);
+    checkoutUrl.searchParams.append('p_description', newPayment.description);
+    checkoutUrl.searchParams.append('p_amount', amount.toString());
+    checkoutUrl.searchParams.append('p_amount_base', amount.toString());
+    checkoutUrl.searchParams.append('p_tax', '0');
+    checkoutUrl.searchParams.append('p_currency_code', 'COP');
+    checkoutUrl.searchParams.append('p_signature', signature);
 
     // URLs de respuesta
-    checkoutUrl.searchParams.append('external', 'true');
-    checkoutUrl.searchParams.append('response', `${process.env.FRONTEND_URL}/payment/response`);
-    checkoutUrl.searchParams.append('confirmation', `${process.env.BACKEND_URL}/api/payment/confirm`);
+    checkoutUrl.searchParams.append('p_url_response', `${process.env.FRONTEND_URL}/payment/response`);
+    checkoutUrl.searchParams.append('p_confirmation_url', `${process.env.BACKEND_URL}/api/payment/confirm`);
 
-    // Información del cliente (nota los guiones en los nombres)
-    checkoutUrl.searchParams.append('name-billing', `${user.name} ${user.lastName}`);
-    checkoutUrl.searchParams.append('address-billing', 'Carrera 1 # 1-1');
-    checkoutUrl.searchParams.append('type-doc-billing', mappedDocType);
-    checkoutUrl.searchParams.append('mobilephone-billing', user.phone || '3001234567');
-    checkoutUrl.searchParams.append('number-doc-billing', user.documentNumber);
-    checkoutUrl.searchParams.append('email-billing', user.mail);
+    // Información del cliente
+    checkoutUrl.searchParams.append('p_email', user.mail);
+    checkoutUrl.searchParams.append('p_name', user.name);
+    checkoutUrl.searchParams.append('p_last_name', user.lastName);
+    checkoutUrl.searchParams.append('p_phone', user.phone || '3001234567');
+    checkoutUrl.searchParams.append('p_mobile', user.phone || '3001234567');
+    checkoutUrl.searchParams.append('p_address', 'Carrera 1 # 1-1');
+    checkoutUrl.searchParams.append('p_country', 'CO');
+    checkoutUrl.searchParams.append('p_city', 'Bogota');
+    checkoutUrl.searchParams.append('p_postal_code', '110111');
+    
+    // Documento de identidad
+    checkoutUrl.searchParams.append('p_type_doc', mappedDocType);
+    checkoutUrl.searchParams.append('p_document', user.documentNumber);
 
-    // Extras
-    checkoutUrl.searchParams.append('extra1', userId.toString());
-    checkoutUrl.searchParams.append('extra2', serviceType);
-    checkoutUrl.searchParams.append('extra3', serviceId.toString());
+    // Extras para identificación
+    checkoutUrl.searchParams.append('p_extra1', userId.toString());
+    checkoutUrl.searchParams.append('p_extra2', serviceType);
+    checkoutUrl.searchParams.append('p_extra3', serviceId.toString());
 
-    // Modo prueba
-    checkoutUrl.searchParams.append('test', process.env.EPAYCO_P_TESTING === 'true' ? 'true' : 'false');
+    // Idioma y modo prueba
+    checkoutUrl.searchParams.append('p_lang', 'es');
+    checkoutUrl.searchParams.append('p_test_request', process.env.EPAYCO_P_TESTING === 'true' ? 'true' : 'false');
 
     const paymentUrl = checkoutUrl.toString();
     console.log('🌐 URL de checkout generada:', paymentUrl);
@@ -237,16 +258,24 @@ const confirmPayment = async (req, res) => {
       return res.status(404).json({ error: 'Pago no encontrado' });
     }
 
-    // 🔐 Validar firma (OPCIONAL pero recomendado)
-    // const expectedSignature = crypto
-    //   .createHash('sha256')
-    //   .update(`${x_cust_id_cliente}^${process.env.EPAYCO_P_KEY}^${x_ref_payco}^${x_transaction_id}^${x_amount}^${x_currency_code}`)
-    //   .digest('hex');
+    // 🔐 Validar firma (RECOMENDADO EN PRODUCCIÓN)
+    const expectedSignature = crypto
+      .createHash('sha256')
+      .update(`${x_cust_id_cliente}^${process.env.EPAYCO_P_KEY}^${x_ref_payco}^${x_transaction_id}^${x_amount}^${x_currency_code}`)
+      .digest('hex');
 
-    // if (expectedSignature !== x_signature) {
-    //   console.error('❌ Firma inválida');
-    //   return res.status(403).json({ error: 'Firma inválida' });
-    // }
+    if (expectedSignature !== x_signature) {
+      console.error('❌ Firma inválida');
+      console.log('Esperada:', expectedSignature);
+      console.log('Recibida:', x_signature);
+      
+      // En modo prueba, permitir continuar pero loguear advertencia
+      if (process.env.EPAYCO_P_TESTING !== 'true') {
+        return res.status(403).json({ error: 'Firma inválida' });
+      } else {
+        console.warn('⚠️ Firma inválida pero permitiendo en modo prueba');
+      }
+    }
 
     // 📝 Actualizar datos del pago
     payment.epaycoReference = x_ref_payco;
