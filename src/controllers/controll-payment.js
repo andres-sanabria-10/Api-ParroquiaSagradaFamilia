@@ -48,11 +48,11 @@ const createPayment = async (req, res) => {
       return res.status(400).json({ error: 'Monto inválido' });
     }
 
-    // 💰 Validar monto mínimo para ePayco
-    if (amount < 1000) {
+    // 💰 NUEVO: Validar monto mínimo más alto para evitar rechazos
+    if (amount < 5000) {
       return res.status(400).json({ 
         error: 'Monto muy bajo',
-        details: 'El monto mínimo para procesar un pago es de $1,000 COP'
+        details: 'El monto mínimo para procesar un pago es de $5,000 COP'
       });
     }
 
@@ -106,11 +106,30 @@ const createPayment = async (req, res) => {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
-    // Validar que el usuario tenga email
-    if (!user.mail) {
+    // NUEVO: Validaciones más estrictas de datos del usuario
+    const validationErrors = [];
+
+    if (!user.mail || !user.mail.includes('@')) {
+      validationErrors.push('email válido');
+    }
+
+    if (!user.phone || user.phone.length < 10) {
+      validationErrors.push('número de teléfono (10 dígitos)');
+    }
+
+    if (!user.address || user.address.length < 5) {
+      validationErrors.push('dirección completa');
+    }
+
+    if (!user.documentNumber || user.documentNumber.length < 5) {
+      validationErrors.push('número de documento');
+    }
+
+    if (validationErrors.length > 0) {
       return res.status(400).json({ 
-        error: 'Usuario sin email registrado',
-        details: 'Por favor, actualiza tu perfil con un email válido'
+        error: 'Perfil incompleto',
+        details: `Por favor actualiza tu perfil con: ${validationErrors.join(', ')}`,
+        missingFields: validationErrors
       });
     }
 
@@ -147,7 +166,8 @@ const createPayment = async (req, res) => {
       documentType: user.typeDocument?.document_type_name,
       mappedDocType,
       documentNumber: user.documentNumber,
-      phone: user.phone
+      phone: user.phone,
+      address: user.address
     });
 
     // 🔑 Variables de entorno necesarias
@@ -163,6 +183,7 @@ const createPayment = async (req, res) => {
     }
 
     console.log('🔑 Public Key:', publicKey);
+    console.log('🧪 Modo prueba:', process.env.EPAYCO_P_TESTING === 'true' ? 'SÍ' : 'NO');
 
     // 📦 DATOS PARA EL CHECKOUT DE EPAYCO
     const paymentData = {
@@ -182,13 +203,13 @@ const createPayment = async (req, res) => {
       responseUrl: `${process.env.FRONTEND_URL}/payment/response`,
       confirmationUrl: `${process.env.BACKEND_URL}/api/payment/confirm`,
       
-      // Información del cliente (TODOS LOS CAMPOS REQUERIDOS)
-      nameFactura: `${user.name} ${user.lastName}`,
-      emailFactura: user.mail,
-      mobilePhoneFactura: user.phone || '3001234567',
-      addressFactura: user.address || 'Calle 1 # 1-1',
+      // Información del cliente (TODOS LOS CAMPOS REQUERIDOS Y VALIDADOS)
+      nameFactura: `${user.name} ${user.lastName}`.trim(),
+      emailFactura: user.mail.trim(),
+      mobilePhoneFactura: user.phone.replace(/[^0-9]/g, ''), // Solo números
+      addressFactura: user.address.trim(),
       typeDocFactura: mappedDocType,
-      numberDocFactura: user.documentNumber,
+      numberDocFactura: user.documentNumber.toString(),
       
       // Extras para identificación
       extra1: userId.toString(),
@@ -202,7 +223,12 @@ const createPayment = async (req, res) => {
       methodsDisable: '[]',
     };
 
-    console.log('📦 Payment data preparado:', paymentData);
+    console.log('📦 Payment data preparado:', {
+      ...paymentData,
+      // Ocultar datos sensibles en logs
+      emailFactura: user.mail.replace(/(.{3}).*(@.*)/, '$1***$2'),
+      mobilePhoneFactura: user.phone.replace(/(.{3}).*(.{2})/, '$1***$2'),
+    });
 
     // ✅ Retornar los datos para que el frontend use el checkout
     return res.status(201).json({
@@ -297,7 +323,7 @@ const confirmPayment = async (req, res) => {
       console.warn('⚠️ No se puede validar firma - EPAYCO_P_KEY no configurada');
     }
 
-    // 📝 Actualizar datos del pago
+    // 🔍 Actualizar datos del pago
     payment.epaycoReference = x_ref_payco;
     payment.transactionId = x_transaction_id;
     payment.epaycoData = {
@@ -315,7 +341,7 @@ const confirmPayment = async (req, res) => {
       payment.status = 'approved';
       payment.confirmedAt = new Date();
 
-      // 📄 Actualizar el servicio relacionado
+      // 🔄 Actualizar el servicio relacionado
       if (payment.serviceType === 'mass') {
         await RequestMass.findByIdAndUpdate(payment.serviceId, {
           status: 'Confirmada',
@@ -330,7 +356,7 @@ const confirmPayment = async (req, res) => {
 
     } else if (x_cod_response === '2' || x_cod_response === 2) {
       payment.status = 'rejected';
-      console.log('❌ Pago rechazado');
+      console.log('❌ Pago rechazado:', x_response);
     } else if (x_cod_response === '3' || x_cod_response === 3) {
       payment.status = 'pending';
       console.log('⏳ Pago pendiente');
