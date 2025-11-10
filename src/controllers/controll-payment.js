@@ -11,7 +11,7 @@ const generateReference = () => {
   return `PAR${timestamp}${random}`;
 };
 
-// 🔐 Mapear tipo de documento
+// 📋 Mapear tipo de documento
 const mapDocumentType = (documentTypeName) => {
   const typeMap = {
     'Cédula de Ciudadanía': 'CC',
@@ -28,7 +28,7 @@ const mapDocumentType = (documentTypeName) => {
 };
 
 /**
- * 💳 Crear pago y procesar con Checkout de ePayco
+ * 💳 Crear pago y devolver datos para ePayco
  */
 const createPayment = async (req, res) => {
   try {
@@ -122,7 +122,7 @@ const createPayment = async (req, res) => {
 
     await newPayment.save();
 
-    // 🔐 Mapear tipo de documento
+    // 📋 Mapear tipo de documento
     const mappedDocType = mapDocumentType(user.typeDocument?.document_type_name);
 
     console.log('👤 Datos del usuario:', {
@@ -134,7 +134,7 @@ const createPayment = async (req, res) => {
       phone: user.phone
     });
 
-    // 🔐 Variables de entorno necesarias
+    // 🔑 Variables de entorno necesarias
     const publicKey = process.env.EPAYCO_P_PUBLIC_KEY;
 
     // Validar que exista la public key
@@ -148,48 +148,47 @@ const createPayment = async (req, res) => {
 
     console.log('🔑 Public Key:', publicKey);
 
-    // 🌐 Construir URL de checkout ESTÁNDAR de ePayco
-    const checkoutUrl = new URL('https://checkout.epayco.co/checkout.js');
+    // 📦 DEVOLVER DATOS PARA EL FORMULARIO (no URL)
+    const paymentData = {
+      // Configuración de ePayco
+      publicKey: publicKey,
+      
+      // Datos de la transacción
+      invoice: referenceCode,
+      description: newPayment.description,
+      amount: amount.toString(),
+      taxBase: amount.toString(),
+      tax: '0',
+      currency: 'cop',
+      country: 'co',
+      
+      // URLs de respuesta
+      responseUrl: `${process.env.FRONTEND_URL}/payment/response`,
+      confirmationUrl: `${process.env.BACKEND_URL}/api/payment/confirm`,
+      
+      // Información del cliente
+      nameFactura: `${user.name} ${user.lastName}`,
+      emailFactura: user.mail,
+      mobilePhoneFactura: user.phone || '3001234567',
+      addressFactura: 'Carrera 1 # 1-1',
+      typeDocFactura: mappedDocType,
+      numberDocFactura: user.documentNumber,
+      
+      // Extras para identificación
+      extra1: userId.toString(),
+      extra2: serviceType,
+      extra3: serviceId.toString(),
+      
+      // Configuración
+      lang: 'es',
+      external: 'false',
+      test: process.env.EPAYCO_P_TESTING === 'true' ? 'true' : 'false',
+      methodsDisable: '[]',
+    };
 
-    // ⚠️ PARÁMETROS CHECKOUT ESTÁNDAR (sin prefijo p_)
-    checkoutUrl.searchParams.append('public-key', publicKey);
-    checkoutUrl.searchParams.append('invoice', referenceCode);
-    checkoutUrl.searchParams.append('description', newPayment.description);
-    checkoutUrl.searchParams.append('amount', amount.toString());
-    checkoutUrl.searchParams.append('tax_base', amount.toString());
-    checkoutUrl.searchParams.append('tax', '0');
-    checkoutUrl.searchParams.append('currency', 'cop');
-    checkoutUrl.searchParams.append('country', 'co');
+    console.log('📦 Payment data preparado:', paymentData);
 
-    // URLs de respuesta
-    checkoutUrl.searchParams.append('response', `${process.env.FRONTEND_URL}/payment/response`);
-    checkoutUrl.searchParams.append('confirmation', `${process.env.BACKEND_URL}/api/payment/confirm`);
-
-    // Información del cliente (con guiones)
-    checkoutUrl.searchParams.append('name-billing', `${user.name} ${user.lastName}`);
-    checkoutUrl.searchParams.append('email-billing', user.mail);
-    checkoutUrl.searchParams.append('mobilephone-billing', user.phone || '3001234567');
-    checkoutUrl.searchParams.append('address-billing', 'Carrera 1 # 1-1');
-    checkoutUrl.searchParams.append('type-doc-billing', mappedDocType);
-    checkoutUrl.searchParams.append('number-doc-billing', user.documentNumber);
-
-    // Extras para identificación
-    checkoutUrl.searchParams.append('extra1', userId.toString());
-    checkoutUrl.searchParams.append('extra2', serviceType);
-    checkoutUrl.searchParams.append('extra3', serviceId.toString());
-
-    // Idioma y modo prueba
-    checkoutUrl.searchParams.append('lang', 'es');
-    checkoutUrl.searchParams.append('external', 'false');
-    checkoutUrl.searchParams.append('test', process.env.EPAYCO_P_TESTING === 'true' ? 'true' : 'false');
-
-    // Método de pago - acepta todos
-    checkoutUrl.searchParams.append('methodsDisable', '[]');
-
-    const paymentUrl = checkoutUrl.toString();
-    console.log('🌐 URL de checkout generada:', paymentUrl);
-
-    // ✅ Retornar la URL directamente
+    // ✅ Retornar los datos para que el frontend cree el formulario
     return res.status(201).json({
       success: true,
       message: 'Pago creado exitosamente',
@@ -200,7 +199,7 @@ const createPayment = async (req, res) => {
         description: newPayment.description,
         status: newPayment.status,
       },
-      paymentUrl: paymentUrl,
+      epaycoData: paymentData, // 👈 Datos para el formulario
     });
 
   } catch (error) {
@@ -225,7 +224,7 @@ const createPayment = async (req, res) => {
  */
 const confirmPayment = async (req, res) => {
   try {
-    console.log('🔔 Webhook de ePayco recibido:', JSON.stringify(req.body, null, 2));
+    console.log('📨 Webhook de ePayco recibido:', JSON.stringify(req.body, null, 2));
 
     const {
       x_cust_id_cliente,
@@ -251,7 +250,7 @@ const confirmPayment = async (req, res) => {
 
     if (!payment) {
       console.error('❌ Pago no encontrado con referencia:', x_id_invoice);
-      return res.status(200).send('OK'); // Enviar OK aunque no se encuentre para evitar reintentos
+      return res.status(200).send('OK');
     }
 
     // 🔐 Validar firma (IMPORTANTE EN PRODUCCIÓN)
@@ -272,9 +271,8 @@ const confirmPayment = async (req, res) => {
       if (expectedSignature !== x_signature) {
         console.error('❌ Firma inválida');
         
-        // En modo prueba, permitir continuar pero loguear advertencia
         if (process.env.EPAYCO_P_TESTING !== 'true') {
-          return res.status(200).send('OK'); // No bloquear el webhook
+          return res.status(200).send('OK');
         } else {
           console.warn('⚠️ Firma inválida pero permitiendo en modo prueba');
         }
@@ -337,7 +335,6 @@ const confirmPayment = async (req, res) => {
 
   } catch (error) {
     console.error('💥 Error en confirmPayment:', error);
-    // Siempre devolver 200 OK para evitar reintentos infinitos del webhook
     res.status(200).send('OK');
   }
 };
