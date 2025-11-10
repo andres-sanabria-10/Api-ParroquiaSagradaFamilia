@@ -106,23 +106,19 @@ const createPayment = async (req, res) => {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
-    // NUEVO: Validaciones más estrictas de datos del usuario
+    // ✅ Validar solo campos REALMENTE obligatorios
     const validationErrors = [];
 
     if (!user.mail || !user.mail.includes('@')) {
       validationErrors.push('email válido');
     }
 
-    if (!user.phone || user.phone.length < 10) {
-      validationErrors.push('número de teléfono (10 dígitos)');
-    }
-
-    if (!user.address || user.address.length < 5) {
-      validationErrors.push('dirección completa');
-    }
-
-    if (!user.documentNumber || user.documentNumber.length < 5) {
+    if (!user.documentNumber || user.documentNumber.toString().length < 5) {
       validationErrors.push('número de documento');
+    }
+
+    if (!user.name || !user.lastName) {
+      validationErrors.push('nombre completo');
     }
 
     if (validationErrors.length > 0) {
@@ -132,6 +128,10 @@ const createPayment = async (req, res) => {
         missingFields: validationErrors
       });
     }
+
+    // 📱 Usar valores genéricos para campos opcionales
+    const phoneNumber = user.phone?.replace(/[^0-9]/g, '') || '3155923440';
+    const address = user.address?.trim() || 'Carrera 5 # 10-20, Sogamoso, Boyacá';
 
     // 🔑 Generar referencia única
     const referenceCode = generateReference();
