@@ -33,7 +33,7 @@ const mapDocumentType = (documentTypeName) => {
 const createPayment = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { serviceType, serviceId, amount, description } = req.body;
+    const { serviceType, serviceId, amount, description, phone, address } = req.body;
 
     // ✅ Validaciones
     if (!serviceType || !['mass', 'certificate'].includes(serviceType)) {
@@ -48,11 +48,26 @@ const createPayment = async (req, res) => {
       return res.status(400).json({ error: 'Monto inválido' });
     }
 
-    // 💰 NUEVO: Validar monto mínimo más alto para evitar rechazos
+    // 💰 Validar monto mínimo
     if (amount < 5000) {
       return res.status(400).json({ 
         error: 'Monto muy bajo',
         details: 'El monto mínimo para procesar un pago es de $5,000 COP'
+      });
+    }
+
+    // 📱 Validar teléfono y dirección (nuevos campos obligatorios)
+    if (!phone || phone.length < 10) {
+      return res.status(400).json({ 
+        error: 'Teléfono requerido',
+        details: 'El teléfono debe tener al menos 10 dígitos'
+      });
+    }
+
+    if (!address || address.trim().length < 10) {
+      return res.status(400).json({ 
+        error: 'Dirección requerida',
+        details: 'La dirección debe tener al menos 10 caracteres'
       });
     }
 
@@ -129,11 +144,11 @@ const createPayment = async (req, res) => {
       });
     }
 
-    // 📱 Usar valores genéricos para campos opcionales
-    const phoneNumber = user.phone?.replace(/[^0-9]/g, '') || '3155923440';
-    const address = user.address?.trim() || 'Carrera 5 # 10-20, Sogamoso, Boyacá';
+    // 📱 Usar los valores proporcionados por el usuario (desde el formulario)
+    const phoneNumber = phone.replace(/[^0-9]/g, '');
+    const userAddress = address.trim();
 
-    // 🔑 Generar referencia única
+    // 🔒 Generar referencia única
     const referenceCode = generateReference();
 
     // 💾 Crear registro de pago en BD
@@ -160,20 +175,19 @@ const createPayment = async (req, res) => {
     // 📋 Mapear tipo de documento
     const mappedDocType = mapDocumentType(user.typeDocument?.document_type_name);
 
-    console.log('👤 Datos del usuario:', {
+    console.log('👤 Datos del usuario para ePayco:', {
       name: `${user.name} ${user.lastName}`,
       email: user.mail,
       documentType: user.typeDocument?.document_type_name,
       mappedDocType,
       documentNumber: user.documentNumber,
-      phone: user.phone,
-      address: user.address
+      phone: phoneNumber,
+      address: userAddress
     });
 
     // 🔑 Variables de entorno necesarias
     const publicKey = process.env.EPAYCO_P_PUBLIC_KEY;
 
-    // Validar que exista la public key
     if (!publicKey) {
       console.error('❌ Public Key de ePayco no configurada');
       return res.status(500).json({ 
@@ -194,8 +208,8 @@ const createPayment = async (req, res) => {
       invoice: referenceCode,
       description: newPayment.description,
       amount: amount.toString(),
-      taxBase: '0', // Base gravable (0 si no hay impuestos)
-      tax: '0', // IVA
+      taxBase: '0',
+      tax: '0',
       currency: 'cop',
       country: 'co',
       
@@ -203,11 +217,11 @@ const createPayment = async (req, res) => {
       responseUrl: `${process.env.FRONTEND_URL}/payment/response`,
       confirmationUrl: `${process.env.BACKEND_URL}/api/payment/confirm`,
       
-      // Información del cliente (TODOS LOS CAMPOS REQUERIDOS Y VALIDADOS)
+      // ✅ Información del cliente (usando valores del formulario)
       nameFactura: `${user.name} ${user.lastName}`.trim(),
       emailFactura: user.mail.trim(),
-      mobilePhoneFactura: user.phone.replace(/[^0-9]/g, ''), // Solo números
-      addressFactura: user.address.trim(),
+      mobilePhoneFactura: phoneNumber,
+      addressFactura: userAddress,
       typeDocFactura: mappedDocType,
       numberDocFactura: user.documentNumber.toString(),
       
@@ -225,9 +239,8 @@ const createPayment = async (req, res) => {
 
     console.log('📦 Payment data preparado:', {
       ...paymentData,
-      // Ocultar datos sensibles en logs
       emailFactura: user.mail.replace(/(.{3}).*(@.*)/, '$1***$2'),
-      mobilePhoneFactura: user.phone.replace(/(.{3}).*(.{2})/, '$1***$2'),
+      mobilePhoneFactura: phoneNumber.replace(/(.{3}).*(.{2})/, '$1***$2'),
     });
 
     // ✅ Retornar los datos para que el frontend use el checkout
@@ -247,7 +260,6 @@ const createPayment = async (req, res) => {
   } catch (error) {
     console.error('💥 Error en createPayment:', error);
 
-    // Manejo detallado de errores
     let errorMessage = 'Error al crear el pago';
     let errorDetails = {
       message: error.message,
@@ -282,9 +294,9 @@ const confirmPayment = async (req, res) => {
       x_franchise,
       x_bank_name,
       x_transaction_date,
-      x_extra1, // userId
-      x_extra2, // serviceType
-      x_extra3, // serviceId
+      x_extra1,
+      x_extra2,
+      x_extra3,
     } = req.body;
 
     // 🔍 Buscar el pago por referencia
@@ -295,7 +307,7 @@ const confirmPayment = async (req, res) => {
       return res.status(200).send('OK');
     }
 
-    // 🔐 Validar firma (IMPORTANTE EN PRODUCCIÓN)
+    // 🔐 Validar firma
     const pKey = process.env.EPAYCO_P_KEY;
     
     if (pKey) {
@@ -323,7 +335,7 @@ const confirmPayment = async (req, res) => {
       console.warn('⚠️ No se puede validar firma - EPAYCO_P_KEY no configurada');
     }
 
-    // 🔍 Actualizar datos del pago
+    // 📝 Actualizar datos del pago
     payment.epaycoReference = x_ref_payco;
     payment.transactionId = x_transaction_id;
     payment.epaycoData = {
@@ -341,7 +353,7 @@ const confirmPayment = async (req, res) => {
       payment.status = 'approved';
       payment.confirmedAt = new Date();
 
-      // 🔄 Actualizar el servicio relacionado
+      // 📄 Actualizar el servicio relacionado
       if (payment.serviceType === 'mass') {
         await RequestMass.findByIdAndUpdate(payment.serviceId, {
           status: 'Confirmada',
