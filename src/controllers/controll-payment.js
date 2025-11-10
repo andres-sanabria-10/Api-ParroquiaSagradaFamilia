@@ -51,7 +51,7 @@ const createPayment = async (req, res) => {
 
     // 💰 Validar monto mínimo
     if (amount < 5000) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Monto muy bajo',
         details: { message: 'El monto mínimo para procesar un pago es de $5,000 COP' }
       });
@@ -59,14 +59,14 @@ const createPayment = async (req, res) => {
 
     // 📱 Validar teléfono y dirección
     if (!phone || !/^[0-9]{10}$/.test(phone.replace(/\D/g, ''))) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Teléfono inválido',
         details: { message: 'El teléfono debe tener 10 dígitos numéricos' }
       });
     }
 
     if (!address || address.trim().length < 10) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Dirección requerida',
         details: { message: 'La dirección debe tener al menos 10 caracteres' }
       });
@@ -138,7 +138,7 @@ const createPayment = async (req, res) => {
     }
 
     if (validationErrors.length > 0) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Perfil incompleto',
         details: { message: `Por favor actualiza tu perfil con: ${validationErrors.join(', ')}` },
         missingFields: validationErrors
@@ -186,7 +186,7 @@ const createPayment = async (req, res) => {
 
     if (!publicKey) {
       console.error('❌ EPAYCO_P_PUBLIC_KEY no configurada');
-      return res.status(500).json({ 
+      return res.status(500).json({
         error: 'Error de configuración del sistema de pagos',
         details: { message: 'Contacte al administrador - PUBLIC_KEY no configurada' }
       });
@@ -214,7 +214,7 @@ const createPayment = async (req, res) => {
       // 🔑 Configuración
       publicKey: publicKey,
       test: testMode ? 'true' : 'false',
-      
+
       // 📋 Información del producto/servicio
       name: newPayment.description,
       description: newPayment.description,
@@ -223,16 +223,16 @@ const createPayment = async (req, res) => {
       amount: amount.toString(), // ⚠️ String obligatorio
       taxBase: '0', // ⚠️ String obligatorio
       tax: '0', // ⚠️ String obligatorio
-      
+
       // 🌎 Configuración regional
       country: 'co',
       lang: 'es',
-      
+
       // 🔗 URLs de respuesta (CRITICAL)
       external: 'true', // ⚠️ String 'true' para usar URLs personalizadas
-      responseUrl: `${process.env.FRONTEND_URL}/payment/response`,
+      responseUrl: `${process.env.FRONTEND_URL}/payment/response?invoice=${referenceCode}`, // <-- ¡AQUÍ ESTÁ EL CAMBIO!
       confirmationUrl: `${process.env.BACKEND_URL}/api/payment/confirm`,
-      
+
       // 👤 Información de facturación - NOMBRES CORRECTOS SEGÚN EPAYCO
       name_billing: `${user.name} ${user.lastName}`.trim(),
       email_billing: user.mail.trim(),
@@ -240,12 +240,12 @@ const createPayment = async (req, res) => {
       address_billing: userAddress,
       type_doc_billing: mappedDocType,
       number_doc_billing: user.documentNumber.toString().replace(/[^\w]/g, ''),
-      
+
       // 📎 Datos extras (para identificación interna)
       extra1: userId.toString(),
       extra2: serviceType,
       extra3: serviceId.toString(),
-      
+
       // 🚫 Métodos de pago deshabilitados (opcional)
       methodsDisable: JSON.stringify([]), // Array vacío = todos habilitados
     };
@@ -325,7 +325,7 @@ const confirmPayment = async (req, res) => {
 
     // 🔐 Validar firma (solo en producción)
     const pKey = process.env.EPAYCO_P_KEY;
-    
+
     if (pKey && process.env.EPAYCO_P_TESTING !== 'true') {
       const expectedSignature = crypto
         .createHash('sha256')
@@ -361,7 +361,7 @@ const confirmPayment = async (req, res) => {
 
     // 🎯 Actualizar estado según respuesta
     const responseCode = x_cod_response?.toString();
-    
+
     if (responseCode === '1') {
       payment.status = 'approved';
       payment.confirmedAt = new Date();
