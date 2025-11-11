@@ -101,55 +101,64 @@ exports.sendVerifyCode = async (mail, resetCode) => {
 };
 
 exports.sendDepartureDocument = async (requestData, departureData) => {
-  // 2. Traducimos el tipo de partida
   const tipoEnEspanol = translations[requestData.departureType] || requestData.departureType;
 
-  const pdfPath = path.join(__dirname, 'temp', `${requestData.departureType.toLowerCase()}_${departureData._id}.pdf`);
-  
-  try {
-    const tempDir = path.join(__dirname, 'temp');
-    if (!fs.existsSync(tempDir)) {
-      fs.mkdirSync(tempDir);
-    }
+  const pdfPath = path.join(__dirname, 'temp', `${requestData.departureType.toLowerCase()}_${departureData._id}.pdf`);
 
-    // Genera el PDF (esta función recibe 'Baptism', 'Confirmation', etc.)
-    await generatePDF(requestData.departureType, departureData, pdfPath);
+  try {
+    const tempDir = path.join(__dirname, 'temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir);
+    }
 
-    let sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
-    
-    // 3. Usamos la traducción en el email
-    sendSmtpEmail.subject = `Partida de ${tipoEnEspanol}`;
-    sendSmtpEmail.htmlContent = `
-      <html>
-        <body>
-          <h1>Partida de ${tipoEnEspanol}</h1>
-          <p>Estimado/a ${requestData.applicant.name},</p>
-          <p>Adjunto encontrará su Partida de ${tipoEnEspanol} solicitada.</p>
-          <p>Gracias por utilizar nuestros servicios.</p>
-          <p>Atentamente,<br>Parroquia la Sagrada Familia</p>
-        </body>
-      </html>
-    `;
-    sendSmtpEmail.sender = { name: "Parroquia la Sagrada Familia", email: process.env.FROM_EMAIL };
-    
-    // --- Esta es la línea que estaba causando el error. Ya está limpia. ---
+    await generatePDF(requestData.departureType, departureData, pdfPath);
+
+    let sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+
+    sendSmtpEmail.subject = `Partida de ${tipoEnEspanol}`;
+
+    // 👇 aquí está el HTML con estilos más compactos
+    sendSmtpEmail.htmlContent = `
+      <html>
+        <head>
+          <meta charset="UTF-8" />
+        </head>
+        <body style="margin:0; padding:0; font-family: Arial, sans-serif; background:#ffffff;">
+          <div style="max-width:600px; margin:0 auto; padding:20px;">
+            <h1 style="margin:0 0 12px 0; font-size:26px; color:#222;">Partida de ${tipoEnEspanol}</h1>
+            <p style="margin:0 0 8px 0; color:#333;">Estimado/a ${requestData.applicant.name},</p>
+            <p style="margin:0 0 8px 0; color:#333;">
+              Adjunto encontrará su Partida de ${tipoEnEspanol} solicitada.
+            </p>
+            <p style="margin:0 0 8px 0; color:#333;">
+              Gracias por utilizar nuestros servicios.
+            </p>
+            <p style="margin:12px 0 0 0; color:#333;">
+              Atentamente,<br/>
+              Parroquia la Sagrada Familia
+            </p>
+          </div>
+        </body>
+      </html>
+    `;
+
+    sendSmtpEmail.sender = { name: "Parroquia la Sagrada Familia", email: process.env.FROM_EMAIL };
     sendSmtpEmail.to = [{ email: requestData.applicant.mail }];
 
-    const pdfContent = fs.readFileSync(pdfPath);
-    sendSmtpEmail.attachment = [{
-      content: pdfContent.toString('base64'),
-      name: `partida_${tipoEnEspanol.toLowerCase()}.pdf`
-    }];
+    const pdfContent = fs.readFileSync(pdfPath);
+    sendSmtpEmail.attachment = [{
+      content: pdfContent.toString('base64'),
+      name: `partida_${tipoEnEspanol.toLowerCase()}.pdf`
+    }];
 
-    const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
-    console.log(`Email con partida de ${tipoEnEspanol} enviado correctamente. ID:`, data.messageId);
-    
-    // Elimina el archivo temporal
-    fs.unlinkSync(pdfPath);
+    const data = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    console.log(`Email con partida de ${tipoEnEspanol} enviado correctamente. ID:`, data.messageId);
 
-    return data;
-  } catch (error) {
-    console.error(`Error al enviar email con partida de ${tipoEnEspanol}:`, error);
-    throw new Error(`Error al enviar el correo con la partida de ${tipoEnEspanol}`);
-  }
+    fs.unlinkSync(pdfPath);
+
+    return data;
+  } catch (error) {
+    console.error(`Error al enviar email con partida de ${tipoEnEspanol}:`, error);
+    throw new Error(`Error al enviar el correo con la partida de ${tipoEnEspanol}`);
+  }
 };
