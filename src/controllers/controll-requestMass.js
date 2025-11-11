@@ -210,7 +210,7 @@ module.exports = {
                     date,
                     time,
                     intention,
-                    status: 'Pendiente' 
+                    status: 'Confirmada' 
                   });
             
                   const savedRequest = await newMassRequest.save();
