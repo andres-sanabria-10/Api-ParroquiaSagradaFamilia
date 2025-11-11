@@ -7,6 +7,9 @@ const crypto = require('crypto');
 // ⏱️ Tiempo de expiración de pagos pendientes (en minutos)
 const PAYMENT_EXPIRATION_MINUTES = 30;
 
+// Modo de pruebas ePayco (normalizado)
+const testMode = String(process.env.EPAYCO_P_TESTING || '').toLowerCase() === 'true';
+
 // 🔧 Generar referencia única
 const generateReference = () => {
   const timestamp = Date.now();
@@ -37,14 +40,13 @@ const mapDocumentType = (documentTypeName) => {
  */
 const cleanExpiredPendingPayments = async (serviceId, serviceType) => {
   try {
-    const expirationTime = new Date(Date.now() - PAYMENT_EXPIRATION_MINUTES * 60 * 1000);
-    
-    // Buscar pagos pendientes expirados para este servicio
+    // Buscar pagos pendientes expirados para este servicio (usar expiresAt cuando esté disponible)
+    const now = new Date();
     const expiredPayments = await Payment.find({
       serviceId,
       serviceType,
       status: 'pending',
-      createdAt: { $lt: expirationTime }
+      expiresAt: { $lt: now }
     });
 
     if (expiredPayments.length > 0) {
@@ -56,7 +58,7 @@ const cleanExpiredPendingPayments = async (serviceId, serviceType) => {
           serviceId,
           serviceType,
           status: 'pending',
-          createdAt: { $lt: expirationTime }
+          expiresAt: { $lt: now }
         },
         {
           $set: {
@@ -153,16 +155,17 @@ const createPayment = async (req, res) => {
     }
 
     // 🔍 Verificar que no exista ya un pago pendiente o aprobado VÁLIDO (no expirado)
+    const now = new Date();
     const existingPayment = await Payment.findOne({
       serviceId,
       serviceType,
       status: { $in: ['pending', 'approved'] },
-      // Validar que si es pending, no esté expirado
+      // Validar que si es pending, no esté expirado (usando expiresAt)
       $or: [
         { status: 'approved' },
         { 
           status: 'pending',
-          createdAt: { $gte: new Date(Date.now() - PAYMENT_EXPIRATION_MINUTES * 60 * 1000) }
+          expiresAt: { $gte: now }
         }
       ]
     });
@@ -174,7 +177,7 @@ const createPayment = async (req, res) => {
           : 'Ya tienes un pago pendiente reciente. Por favor, complétalo o espera a que expire.',
         payment: existingPayment,
         expiresIn: existingPayment.status === 'pending' 
-          ? Math.ceil((PAYMENT_EXPIRATION_MINUTES * 60 * 1000 - (Date.now() - existingPayment.createdAt)) / 1000 / 60)
+          ? Math.ceil((existingPayment.expiresAt.getTime() - Date.now()) / 1000 / 60)
           : null
       });
     }
@@ -244,10 +247,9 @@ const createPayment = async (req, res) => {
     // 📋 Mapear tipo de documento
     const mappedDocType = mapDocumentType(user.typeDocument?.document_type_name);
 
-    // 🔑 Variables de entorno
-    const publicKey = process.env.EPAYCO_P_PUBLIC_KEY;
-    const privateKey = process.env.EPAYCO_P_KEY;
-    const testMode = process.env.EPAYCO_P_TESTING === 'true';
+  // 🔑 Variables de entorno
+  const publicKey = process.env.EPAYCO_P_PUBLIC_KEY;
+  const privateKey = process.env.EPAYCO_P_KEY;
 
     if (!publicKey) {
       console.error('❌ EPAYCO_P_PUBLIC_KEY no configurada');
@@ -370,7 +372,14 @@ const confirmPayment = async (req, res) => {
     // 🔐 Validar firma (solo en producción)
     const pKey = process.env.EPAYCO_P_KEY;
 
-    if (pKey && process.env.EPAYCO_P_TESTING !== 'true') {
+    // Validar que el x_cust_id_cliente coincida con la configuración (si está definida)
+    const expectedCustId = process.env.EPAYCO_P_CUST_ID_CLIENTE;
+    if (expectedCustId && x_cust_id_cliente && expectedCustId.toString() !== x_cust_id_cliente.toString()) {
+      console.error('❌ x_cust_id_cliente no coincide con la configuración. Posible petición maliciosa.');
+      return res.status(200).send('OK');
+    }
+
+    if (pKey && !testMode) {
       const expectedSignature = crypto
         .createHash('sha256')
         .update(`${x_cust_id_cliente}^${pKey}^${x_ref_payco}^${x_transaction_id}^${x_amount}^${x_currency_code}`)
