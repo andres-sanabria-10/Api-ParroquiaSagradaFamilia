@@ -46,7 +46,6 @@ module.exports = {
         }
     },
 
-    // ✅ ACTUALIZADO: Ahora lee token de cookies primero
     createRequestDeparture: async (req, res) => {
         try {
             const { departureType } = req.body;
@@ -121,6 +120,7 @@ module.exports = {
             res.status(500).json({ error: 'Error al crear la solicitud de partida', details: error.message });
         }
     },
+
     sendDepartureDocument: async (req, res) => {
         try {
             const { requestId } = req.params;
@@ -199,13 +199,21 @@ module.exports = {
         }
     },
 
-    // Nueva función para verificar si un usuario ya tiene una solicitud pendiente para un tipo de partida
+    // ✅ REFACTORIZADO: Ahora usa el JWT del usuario autenticado
     checkExistingRequest: async (req, res) => {
         try {
-            const { userId, departureType } = req.params; // O de req.query si prefieres Query Params
+            const { departureType } = req.params;
+            
+            // ✅ Obtener userId del JWT (ya verificado por el middleware)
+            const userId = req.user._id;
 
-            if (!userId || !departureType) {
-                return res.status(400).json({ error: 'Se requiere el ID de usuario y el tipo de partida' });
+            console.log('🔍 Verificando solicitud existente:', {
+                userId,
+                departureType
+            });
+
+            if (!departureType) {
+                return res.status(400).json({ error: 'Se requiere el tipo de partida' });
             }
 
             // Validar que el tipo de partida sea uno de los esperados
@@ -214,25 +222,32 @@ module.exports = {
                 return res.status(400).json({ error: 'Tipo de partida no válido' });
             }
 
-            // Buscar si existe una solicitud para este usuario y tipo de partida con estado 'Pendiente' o 'Enviada'
+            // Buscar si existe una solicitud para este usuario y tipo de partida
             const existingRequest = await RequestDeparture.findOne({
                 applicant: userId,
                 departureType: departureType,
-                status: { $in: ['Pendiente', 'Enviada'] } // Consideramos 'Enviada' también como solicitud existente
+                status: { $in: ['Pendiente', 'Enviada'] }
             });
 
             if (existingRequest) {
+                console.log('✅ Solicitud encontrada:', existingRequest._id);
                 return res.status(200).json({
                     exists: true,
-                    request: existingRequest // Opcional: devolver los detalles de la solicitud si es útil para el frontend
+                    request: existingRequest
                 });
             } else {
-                return res.status(200).json({ exists: false });
+                console.log('ℹ️ No hay solicitud existente');
+                return res.status(200).json({ 
+                    exists: false 
+                });
             }
 
         } catch (error) {
-            console.error('Error al verificar solicitud existente:', error);
-            res.status(500).json({ error: 'Error interno al verificar solicitud', details: error.message });
+            console.error('❌ Error al verificar solicitud existente:', error);
+            res.status(500).json({ 
+                error: 'Error interno al verificar solicitud', 
+                details: error.message 
+            });
         }
     },
 };

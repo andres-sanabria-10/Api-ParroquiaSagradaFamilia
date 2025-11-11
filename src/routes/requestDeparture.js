@@ -25,6 +25,6 @@ router.get('/earring', getAllRequestsEarring);
 router.delete('/:id', deleteRequestById);
 
 // Nueva ruta para verificar si una solicitud existe para un usuario y tipo de partida
-router.get('/check/:userId/:departureType', checkAuth, checkExistingRequest);
+router.get('/check/:departureType', checkAuth, checkExistingRequest);
 
 module.exports = router;
