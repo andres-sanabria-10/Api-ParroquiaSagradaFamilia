@@ -124,16 +124,21 @@ exports.sendDepartureDocument = async (requestData, departureData) => {
           <meta charset="UTF-8" />
         </head>
         <body style="margin:0; padding:0; font-family: Arial, sans-serif; background:#ffffff;">
-          <div style="max-width:600px; margin:0 auto; padding:20px;">
-            <h1 style="margin:0 0 12px 0; font-size:26px; color:#222;">Partida de ${tipoEnEspanol}</h1>
-            <p style="margin:0 0 8px 0; color:#333;">Estimado/a ${requestData.applicant.name},</p>
-            <p style="margin:0 0 8px 0; color:#333;">
+          <!-- contenedor SIN margin auto -->
+          <div style="width:100%; max-width:600px; padding:20px 16px; text-align:left;">
+            <h1 style="margin:0 0 12px 0; font-size:26px; color:#222; text-align:left;">
+              Partida de ${tipoEnEspanol}
+            </h1>
+            <p style="margin:0 0 8px 0; color:#333; text-align:left;">
+              Estimado/a ${requestData.applicant.name},
+            </p>
+            <p style="margin:0 0 8px 0; color:#333; text-align:left;">
               Adjunto encontrará su Partida de ${tipoEnEspanol} solicitada.
             </p>
-            <p style="margin:0 0 8px 0; color:#333;">
+            <p style="margin:0 0 8px 0; color:#333; text-align:left;">
               Gracias por utilizar nuestros servicios.
             </p>
-            <p style="margin:12px 0 0 0; color:#333;">
+            <p style="margin:12px 0 0 0; color:#333; text-align:left;">
               Atentamente,<br/>
               Parroquia la Sagrada Familia
             </p>
@@ -141,6 +146,7 @@ exports.sendDepartureDocument = async (requestData, departureData) => {
         </body>
       </html>
     `;
+
 
     sendSmtpEmail.sender = { name: "Parroquia la Sagrada Familia", email: process.env.FROM_EMAIL };
     sendSmtpEmail.to = [{ email: requestData.applicant.mail }];
