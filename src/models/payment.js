@@ -56,7 +56,7 @@ const paymentSchema = new mongoose.Schema({
   status: {
     type: String,
     required: true,
-    enum: ['pending', 'approved', 'rejected', 'failed'],
+    enum: ['pending', 'approved', 'rejected', 'failed','expired'],
     default: 'pending',
   },
   // 📋 Información detallada de ePayco
