@@ -4,6 +4,9 @@ const RequestDeparture = require('../models/requestDeparture');
 const userModel = require('../models/user');
 const crypto = require('crypto');
 
+// ⏱️ Tiempo de expiración de pagos pendientes (en minutos)
+const PAYMENT_EXPIRATION_MINUTES = 30;
+
 // 🔧 Generar referencia única
 const generateReference = () => {
   const timestamp = Date.now();
@@ -26,6 +29,51 @@ const mapDocumentType = (documentTypeName) => {
     'NIT': 'NIT',
   };
   return typeMap[documentTypeName] || 'CC';
+};
+
+/**
+ * 🧹 Limpiar pagos pendientes expirados
+ * Esta función se ejecuta antes de crear un nuevo pago
+ */
+const cleanExpiredPendingPayments = async (serviceId, serviceType) => {
+  try {
+    const expirationTime = new Date(Date.now() - PAYMENT_EXPIRATION_MINUTES * 60 * 1000);
+    
+    // Buscar pagos pendientes expirados para este servicio
+    const expiredPayments = await Payment.find({
+      serviceId,
+      serviceType,
+      status: 'pending',
+      createdAt: { $lt: expirationTime }
+    });
+
+    if (expiredPayments.length > 0) {
+      console.log(`🧹 Limpiando ${expiredPayments.length} pago(s) pendiente(s) expirado(s)...`);
+      
+      // Actualizar estado a 'expired'
+      await Payment.updateMany(
+        {
+          serviceId,
+          serviceType,
+          status: 'pending',
+          createdAt: { $lt: expirationTime }
+        },
+        {
+          $set: {
+            status: 'expired',
+            expiredAt: new Date()
+          }
+        }
+      );
+
+      console.log('✅ Pagos expirados limpiados correctamente');
+    }
+
+    return expiredPayments.length;
+  } catch (error) {
+    console.error('❌ Error al limpiar pagos expirados:', error);
+    return 0;
+  }
 };
 
 /**
@@ -72,6 +120,9 @@ const createPayment = async (req, res) => {
       });
     }
 
+    // 🧹 LIMPIAR PAGOS PENDIENTES EXPIRADOS PRIMERO
+    await cleanExpiredPendingPayments(serviceId, serviceType);
+
     // 🔍 Verificar que el servicio existe y pertenece al usuario
     let service;
     let onModel;
@@ -101,17 +152,30 @@ const createPayment = async (req, res) => {
       }
     }
 
-    // 🔍 Verificar que no exista ya un pago pendiente o aprobado
+    // 🔍 Verificar que no exista ya un pago pendiente o aprobado VÁLIDO (no expirado)
     const existingPayment = await Payment.findOne({
       serviceId,
       serviceType,
-      status: { $in: ['pending', 'approved'] }
+      status: { $in: ['pending', 'approved'] },
+      // Validar que si es pending, no esté expirado
+      $or: [
+        { status: 'approved' },
+        { 
+          status: 'pending',
+          createdAt: { $gte: new Date(Date.now() - PAYMENT_EXPIRATION_MINUTES * 60 * 1000) }
+        }
+      ]
     });
 
     if (existingPayment) {
       return res.status(400).json({
-        error: 'Ya existe un pago pendiente o aprobado para este servicio',
-        payment: existingPayment
+        error: existingPayment.status === 'approved' 
+          ? 'Ya existe un pago aprobado para este servicio'
+          : 'Ya tienes un pago pendiente reciente. Por favor, complétalo o espera a que expire.',
+        payment: existingPayment,
+        expiresIn: existingPayment.status === 'pending' 
+          ? Math.ceil((PAYMENT_EXPIRATION_MINUTES * 60 * 1000 - (Date.now() - existingPayment.createdAt)) / 1000 / 60)
+          : null
       });
     }
 
@@ -149,8 +213,8 @@ const createPayment = async (req, res) => {
     const phoneNumber = phone.replace(/[^0-9]/g, '').substring(0, 10);
     const userAddress = address
       .trim()
-      .replace(/[^\w\s,.-áéíóúñÁÉÍÓÚÑ]/g, '') // Permitir caracteres válidos en español
-      .substring(0, 100); // Máximo 100 caracteres
+      .replace(/[^\w\s,.-áéíóúñÁÉÍÓÚÑ]/g, '')
+      .substring(0, 100);
 
     // 🔒 Generar referencia única
     const referenceCode = generateReference();
@@ -166,6 +230,7 @@ const createPayment = async (req, res) => {
       description: description || `Pago por ${serviceType === 'mass' ? 'solicitud de misa' : 'certificado de partida'}`,
       status: 'pending',
       paymentMethod: 'epayco',
+      expiresAt: new Date(Date.now() + PAYMENT_EXPIRATION_MINUTES * 60 * 1000), // Agregar fecha de expiración
       payerInfo: {
         name: `${user.name} ${user.lastName}`,
         email: user.mail,
@@ -196,44 +261,29 @@ const createPayment = async (req, res) => {
       publicKey: publicKey.substring(0, 10) + '...',
       privateKey: privateKey ? 'Configurada' : '❌ NO configurada',
       testMode,
-      frontendUrl: process.env.FRONTEND_URL,
-      backendUrl: process.env.BACKEND_URL
+      paymentExpiresIn: PAYMENT_EXPIRATION_MINUTES + ' minutos'
     });
 
-    console.log('👤 Datos del usuario:', {
-      name: `${user.name} ${user.lastName}`,
-      email: user.mail.replace(/(.{3}).*(@.*)/, '$1***$2'),
-      documentType: mappedDocType,
-      documentNumber: user.documentNumber,
-      phone: phoneNumber,
-      addressLength: userAddress.length
-    });
-
-    // 📦 DATOS PARA EPAYCO - FORMATO CORRECTO SEGÚN DOCUMENTACIÓN
+    // 📦 DATOS PARA EPAYCO
     const epaycoData = {
-      // 🔑 Configuración
       publicKey: publicKey,
       test: testMode ? 'true' : 'false',
 
-      // 📋 Información del producto/servicio
       name: newPayment.description,
       description: newPayment.description,
       invoice: referenceCode,
       currency: 'cop',
-      amount: amount.toString(), // ⚠️ String obligatorio
-      taxBase: '0', // ⚠️ String obligatorio
-      tax: '0', // ⚠️ String obligatorio
+      amount: amount.toString(),
+      taxBase: '0',
+      tax: '0',
 
-      // 🌎 Configuración regional
       country: 'co',
       lang: 'es',
 
-      // 🔗 URLs de respuesta (CRITICAL)
-      external: 'true', // ⚠️ String 'true' para usar URLs personalizadas
-      responseUrl: `${process.env.FRONTEND_URL}/payment/response?invoice=${referenceCode}`, // <-- ¡AQUÍ ESTÁ EL CAMBIO!
+      external: 'true',
+      responseUrl: `${process.env.FRONTEND_URL}/payment/response?invoice=${referenceCode}`,
       confirmationUrl: `${process.env.BACKEND_URL}/api/payment/confirm`,
 
-      // 👤 Información de facturación - NOMBRES CORRECTOS SEGÚN EPAYCO
       name_billing: `${user.name} ${user.lastName}`.trim(),
       email_billing: user.mail.trim(),
       mobilephone_billing: phoneNumber,
@@ -241,25 +291,17 @@ const createPayment = async (req, res) => {
       type_doc_billing: mappedDocType,
       number_doc_billing: user.documentNumber.toString().replace(/[^\w]/g, ''),
 
-      // 📎 Datos extras (para identificación interna)
       extra1: userId.toString(),
       extra2: serviceType,
       extra3: serviceId.toString(),
 
-      // 🚫 Métodos de pago deshabilitados (opcional)
-      methodsDisable: JSON.stringify([]), // Array vacío = todos habilitados
+      methodsDisable: JSON.stringify([]),
     };
 
-    console.log('✅ Datos preparados para ePayco:', {
-      invoice: epaycoData.invoice,
-      amount: epaycoData.amount,
-      test: epaycoData.test,
-      external: epaycoData.external,
-      name_billing: epaycoData.name_billing,
-      mobilephone_billing: epaycoData.mobilephone_billing,
-      type_doc_billing: epaycoData.type_doc_billing,
-      responseUrl: epaycoData.responseUrl,
-      confirmationUrl: epaycoData.confirmationUrl
+    console.log('✅ Pago creado con expiración:', {
+      invoice: referenceCode,
+      expiresAt: newPayment.expiresAt,
+      expiresInMinutes: PAYMENT_EXPIRATION_MINUTES
     });
 
     // ✅ Retornar los datos para el frontend
@@ -272,6 +314,8 @@ const createPayment = async (req, res) => {
         amount: newPayment.amount,
         description: newPayment.description,
         status: newPayment.status,
+        expiresAt: newPayment.expiresAt,
+        expiresInMinutes: PAYMENT_EXPIRATION_MINUTES
       },
       epaycoData: epaycoData,
     });
