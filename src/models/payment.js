@@ -56,7 +56,7 @@ const paymentSchema = new mongoose.Schema({
   status: {
     type: String,
     required: true,
-    enum: ['pending', 'approved', 'rejected', 'failed','expired'],
+    enum: ['pending', 'approved', 'rejected', 'failed', 'expired'], // ✅ Ya tienes 'expired'
     default: 'pending',
   },
   // 📋 Información detallada de ePayco
@@ -88,12 +88,29 @@ const paymentSchema = new mongoose.Schema({
   confirmedAt: {
     type: Date,
   },
+  
+  // ⏱️ ============= CAMPOS NUEVOS PARA EXPIRACIÓN =============
+  
+  // 📅 Fecha de expiración del pago pendiente
+  expiresAt: {
+    type: Date,
+    index: true, // Para búsquedas rápidas de pagos expirados
+  },
+  
+  // 📅 Fecha cuando el pago fue marcado como expirado
+  expiredAt: {
+    type: Date,
+  },
+  
+  // ⏱️ ============= FIN CAMPOS NUEVOS =============
+  
 }, {
-  timestamps: true,
+  timestamps: true, // Ya tienes createdAt y updatedAt
 });
 
 // Índices para búsquedas rápidas
 paymentSchema.index({ userId: 1, status: 1 });
 paymentSchema.index({ serviceId: 1, serviceType: 1 });
+paymentSchema.index({ expiresAt: 1, status: 1 }); // ⬅️ NUEVO: Para limpiezas eficientes
 
 module.exports = mongoose.model('Payment', paymentSchema);
