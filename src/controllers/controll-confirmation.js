@@ -1,7 +1,10 @@
 const Confirmation = require('../models/confirmation');
 const User = require('../models/user');
+const Payment = require('../models/payment'); 
 const { encrypt } = require('../helpers/handleBcrypt');
-const emailService = require('../services/emailService'); 
+const { generateReference } = require('../controllers/controll-payment');
+const emailService = require('../services/emailService');
+const RequestDeparture = require('../models/requestDeparture');
 
 module.exports = {
   // Obtener todas las confirmaciones
