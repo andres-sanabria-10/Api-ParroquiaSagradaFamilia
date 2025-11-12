@@ -300,6 +300,7 @@ const createPayment = async (req, res) => {
     const epaycoData = {
       // ⚠️ CAMBIO CRÍTICO: Enviar EPAYCO_P_CUST_ID_CLIENTE con nombre correcto
       EPAYCO_P_CUST_ID_CLIENTE: EPAYCO_P_CUST_ID_CLIENTE,
+      EPAYCO_P_PUBLIC_KEY: EPAYCO_P_PUBLIC_KEY,
       test: testMode ? 'true' : 'false',
 
       // Información del pago
