@@ -47,4 +47,13 @@ app.use(cookieParser());
 // Routes
 app.use(require('./routes'))
 
+// Iniciar job periódico para limpiar pagos pendientes expirados
+try {
+  const { startPaymentCleaner } = require('./utils/paymentCleaner');
+  const interval = parseInt(process.env.PAYMENT_CLEAN_INTERVAL_MINUTES) || 10;
+  startPaymentCleaner({ intervalMinutes: interval });
+} catch (err) {
+  console.error('Error al iniciar paymentCleaner:', err);
+}
+
 app.listen(app.get('PORT'), () => console.log(`Server Ready al port ${app.get('PORT')}`))

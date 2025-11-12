@@ -1,11 +1,12 @@
 const Payment = require('../models/payment');
 const RequestMass = require('../models/requestMass');
 const RequestDeparture = require('../models/requestDeparture');
+const MassSchedule = require('../models/massSchedule');
 const userModel = require('../models/user');
 const crypto = require('crypto');
 
 // ⏱️ Tiempo de expiración de pagos pendientes (en minutos)
-const PAYMENT_EXPIRATION_MINUTES = 30;
+const PAYMENT_EXPIRATION_MINUTES = 2;
 
 // Modo de pruebas ePayco (normalizado)
 const testMode = String(process.env.EPAYCO_P_TESTING || '').toLowerCase() === 'true';
@@ -67,6 +68,31 @@ const cleanExpiredPendingPayments = async (serviceId, serviceType) => {
           }
         }
       );
+
+      // Si son pagos de tipo 'mass', liberar las reservas en MassSchedule asociadas a esas solicitudes
+      try {
+        for (const p of expiredPayments) {
+          if (p.serviceType === 'mass' && p.serviceId) {
+            // Buscar la solicitud de misa y liberar el slot reservado si corresponde
+            const reqId = p.serviceId;
+            await MassSchedule.updateMany(
+              { 'timeSlots.reservedBy': reqId },
+              {
+                $set: {
+                  'timeSlots.$.status': 'Libre',
+                  'timeSlots.$.available': true,
+                  'timeSlots.$.reservedBy': null,
+                  'timeSlots.$.reservedUntil': null
+                }
+              }
+            );
+            // También opcionalmente actualizar la solicitud de misa a 'Expirada' si aplica
+            await RequestMass.findByIdAndUpdate(reqId, { status: 'Expirada' }).catch(() => {});
+          }
+        }
+      } catch (err) {
+        console.error('❌ Error liberando reservas tras expiración de pagos:', err);
+      }
 
       console.log('✅ Pagos expirados limpiados correctamente');
     }
@@ -421,9 +447,29 @@ const confirmPayment = async (req, res) => {
 
       // 📄 Actualizar el servicio relacionado
       if (payment.serviceType === 'mass') {
-        await RequestMass.findByIdAndUpdate(payment.serviceId, {
+        const updatedReq = await RequestMass.findByIdAndUpdate(payment.serviceId, {
           status: 'Confirmada',
-        });
+        }, { new: true });
+
+        // Actualizar el schedule: convertir la reserva temporal en ocupada
+        try {
+          if (updatedReq) {
+            await MassSchedule.updateOne(
+              { date: updatedReq.date, 'timeSlots.time': updatedReq.time, 'timeSlots.reservedBy': updatedReq._id },
+              {
+                $set: {
+                  'timeSlots.$.status': 'Ocupado',
+                  'timeSlots.$.available': false,
+                  'timeSlots.$.reservedBy': null,
+                  'timeSlots.$.reservedUntil': null
+                }
+              }
+            );
+          }
+        } catch (err) {
+          console.error('❌ Error actualizando MassSchedule tras confirmación:', err);
+        }
+
         console.log('✅ Solicitud de misa confirmada:', payment.serviceId);
       } else if (payment.serviceType === 'certificate') {
         await RequestDeparture.findByIdAndUpdate(payment.serviceId, {

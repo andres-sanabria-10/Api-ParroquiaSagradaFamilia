@@ -19,6 +19,17 @@ const massScheduleSchema = new mongoose.Schema({
       status: {
         type: String,
         default: "Libre"
+      },
+      // Campo opcional para indicar quién reservó temporalmente este slot (RequestMass._id)
+      reservedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'RequestMass',
+        default: null,
+      },
+      // Fecha hasta la cual la reserva es válida (se libera si expira)
+      reservedUntil: {
+        type: Date,
+        default: null,
       }
     }
   ]
