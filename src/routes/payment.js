@@ -9,6 +9,7 @@ const {
   getPaymentStatus,
   adminCreateCashPayment,
   generateReference,
+  getAllPayments,
 } = require('../controllers/controll-payment');
 
 // Middleware de autenticación
@@ -39,5 +40,7 @@ router.post('/clean-expired', checkAuth, checkRoleAuth(['admin']), async (req, r
 router.post('/confirm', confirmPayment);
 
 router.post('/admin-cash-payment', adminCreateCashPayment);
+
+router.get('/all/history', getAllPayments);
 
 module.exports = router;

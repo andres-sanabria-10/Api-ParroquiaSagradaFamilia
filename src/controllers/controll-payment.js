@@ -653,6 +653,39 @@ const adminCreateCashPayment = async (req, res) => {
   }
 };
 
+
+
+const getAllPayments = async (req, res) => {
+    try {
+      // Buscamos todos los pagos, ordenados por más reciente
+      const payments = await Payment.find()
+        .populate('userId', 'name lastName') // Obtenemos el nombre del usuario
+        .sort({ createdAt: -1 }) // Los más nuevos primero
+        .lean();
+  
+      // Calculamos el total recaudado (solo de pagos 'approved')
+      const totalRevenue = payments
+        .filter(p => p.status === 'approved')
+        .reduce((sum, p) => sum + p.amount, 0);
+  
+      res.status(200).json({
+        success: true,
+        totalRevenue, // Total recaudado
+        totalTransactions: payments.length, // Conteo total
+        payments, // Lista de pagos
+      });
+  
+    } catch (error) {
+      console.error('💥 Error en getAllPayments:', error);
+      res.status(500).json({
+        error: 'Error al obtener todos los pagos',
+        details: { message: error.message }
+      });
+    }
+  };
+
+
+
 module.exports = {
   createPayment,
   confirmPayment,
@@ -661,4 +694,5 @@ module.exports = {
   getPaymentStatus,
   adminCreateCashPayment,
   generateReference,
+  getAllPayments,
 };
