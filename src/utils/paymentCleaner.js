@@ -67,7 +67,7 @@ const cleanExpiredNow = async () => {
  * Inicia un job periódico en memoria que llama a cleanExpiredNow cada intervalMinutes.
  * Nota: en producción es preferible usar un job externo (cron, worker) en lugar de setInterval en el proceso web.
  */
-const startPaymentCleaner = ({ intervalMinutes = 10 } = {}) => {
+const startPaymentCleaner = ({ intervalMinutes = 3 } = {}) => {
   try {
     const intervalMs = Math.max(1, intervalMinutes) * 60 * 1000;
     console.log(`${PAYMENT_CLEAN_LOG_PREFIX} ⏱️ Iniciando job para limpiar pagos expirados cada ${intervalMinutes} minuto(s)`);

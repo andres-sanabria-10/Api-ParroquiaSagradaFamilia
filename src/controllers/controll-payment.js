@@ -6,7 +6,7 @@ const userModel = require('../models/user');
 const crypto = require('crypto');
 
 // ⏱️ Tiempo de expiración de pagos pendientes (en minutos)
-const PAYMENT_EXPIRATION_MINUTES = 30; // ⚠️ Cambiado de 2 a 30 minutos
+const PAYMENT_EXPIRATION_MINUTES = 2; // ⚠️ Cambiado de 2 a 30 minutos
 
 // Modo de pruebas ePayco (normalizado)
 const testMode = String(process.env.EPAYCO_P_TESTING || '').toLowerCase() === 'true';
