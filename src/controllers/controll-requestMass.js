@@ -167,89 +167,102 @@ module.exports = {
 
 
     adminCreateMassRequest: async (req, res) => {
-        try {
-          const {
-            documentNumber, typeDocument, name, lastName, mail, birthdate,
-            date, time, intention
-          } = req.body;
-          
-    
-          // 1. Validar datos
-          if (!date || !time || !intention) {
-            return res.status(400).json({ message: "Faltan datos de la misa (fecha, hora o intención)." });
-          }
-    
-          // 2. Buscar o crear al usuario
-          let user = await userModel.findOne({ documentNumber: documentNumber });
-          if (!user) {
-            if (!name || !lastName || !mail || !birthdate || !typeDocument) {
-              return res.status(400).json({ message: "Faltan datos del solicitante (incluyendo tipo de doc.) para crear el nuevo usuario." });
-            }
-            const tempPassword = await encrypt(documentNumber);
-            const newUser = new userModel({
-              name, lastName, mail, birthdate, documentNumber, typeDocument,
-              password: tempPassword, role: 'feligres'
-            });
-            user = await newUser.save();
-          }
-    
-          // 3. Crear la solicitud de misa
-          const newMassRequest = new RequestMass({
-            applicant: user._id,
-            date,
-            time,
-            intention,
-            status: 'Confirmada' // ✨ CAMBIO: La aprobamos de una vez
-          });
-          const savedRequest = await newMassRequest.save();
-    
-          // --- ✨ 4. CREAR EL PAGO MANUALMENTE ---
-          const amount = 25000; // OJO: Debes definir el costo de la misa. Lo estoy asumiendo.
-          const description = `Pago (en efectivo) por Misa: ${intention.substring(0, 30)}...`;
-    
-          const newPayment = new Payment({
-            userId: user._id,
-            serviceType: 'mass',
-            serviceId: savedRequest._id,
-            onModel: 'RequestMass',
-            amount: amount, 
-            referenceCode: generateReference(), // Usamos el generador
-            description: description,
-            status: 'approved', // Aprobado inmediatamente
-            paymentMethod: 'cash_admin', // Método especial
-            confirmedAt: new Date(),
-            payerInfo: {
-              name: `${user.name} ${user.lastName}`,
-              email: user.mail,
-              documentNumber: user.documentNumber,
-            },
-            epaycoData: {
-              franchise: 'Efectivo (Admin)',
-              bank: 'Caja Parroquial',
-              responseMessage: 'Aprobada (Registro Manual)',
-              authorization: 'ADMIN-MANUAL',
-              transactionDate: new Date(),
-            },
-          });
-          
-          await newPayment.save();
-          console.log('✅ Misa y Pago Manual creados:', newPayment.referenceCode);
-    
-          // 5. Enviar respuesta de éxito
-          res.status(201).json({ 
-            message: "Misa y pago registrados exitosamente",
-            massRequest: savedRequest,
-            payment: newPayment
-          });
-    
-        } catch (error) {
-          if (error.code === 11000) { 
-            return res.status(409).json({ message: "Error de duplicado: El DNI o el correo ya están registrados.", details: error.message });
-          }
-          console.error('Error en adminCreateMassRequest:', error);
-          res.status(500).json({ message: "Error interno del servidor", details: error.message });
-        }
-      }
-
+                try {
+                  const {
+                    // Datos del Usuario
+                    documentNumber,
+                    typeDocument,
+                    name,
+                    lastName,
+                    mail,
+                    birthdate,
+                    // Datos de la Misa
+                    date,
+                    time,
+                    intention
+                  } = req.body;
+                  
+                  // --- LA LÍNEA QUE CAUSABA EL ERROR HA SIDO ELIMINADA ---
+        
+                  // 1. Validar datos
+                  if (!date || !time || !intention) {
+                    return res.status(400).json({ message: "Faltan datos de la misa (fecha, hora o intención)." });
+                  }
+        
+                  // 2. Buscar o crear al usuario (usando 'userModel' como en tu archivo)
+                  let user = await userModel.findOne({ documentNumber: documentNumber });
+            
+                  // 3. Si el usuario NO existe, lo creamos
+                  if (!user) {
+                    if (!name || !lastName || !mail || !birthdate || !typeDocument) {
+                      return res.status(400).json({ message: "Faltan datos del solicitante (incluyendo tipo de doc.) para crear el nuevo usuario." });
+                    }
+                    const tempPassword = await encrypt(documentNumber);
+                    const newUser = new userModel({ // Usando userModel
+                      name, lastName, mail, birthdate, documentNumber, typeDocument,
+                      password: tempPassword, role: 'feligres' 
+                    });
+                    user = await newUser.save();
+                  }
+            
+                  // 4. Crear la solicitud de misa
+                  const newMassRequest = new RequestMass({
+                    applicant: user._id, 
+                    date,
+                    time,
+                    intention,
+                    status: 'Confirmada' 
+                  });
+            
+                  const savedRequest = await newMassRequest.save();
+        
+                  // --- 5. CREAR EL PAGO MANUALMENTE ---
+                  const amount = 25000; // Asumo este costo
+                  const description = `Pago (en efectivo) por Misa: ${intention.substring(0, 30)}...`;
+                  
+                  // Asegúrate de importar 'generateReference' y 'Payment' al inicio del archivo
+                  const newPayment = new Payment({
+                    userId: user._id,
+                    serviceType: 'mass',
+                    serviceId: savedRequest._id,
+                    onModel: 'RequestMass',
+                    amount: amount, 
+                    referenceCode: generateReference(), 
+                    description: description,
+                    status: 'approved', 
+                    paymentMethod: 'cash_admin', 
+                    confirmedAt: new Date(),
+                    payerInfo: {
+                      name: `${user.name} ${user.lastName}`,
+                      email: user.mail,
+                      documentNumber: user.documentNumber,
+                    },
+                    epaycoData: {
+                      franchise: 'Efectivo (Admin)',
+                      bank: 'Caja Parroquial',
+                      responseMessage: 'Aprobada (Registro Manual)',
+                      authorization: 'ADMIN-MANUAL', // Ya no depende de req.user
+                      transactionDate: new Date(),
+                    },
+                  });
+                  
+                  await newPayment.save();
+                  console.log('✅ Misa y Pago Manual creados:', newPayment.referenceCode);
+        
+                  // 6. Enviar respuesta de éxito
+                  res.status(201).json({ 
+                    message: "Misa y pago registrados exitosamente",
+                    massRequest: savedRequest,
+                    payment: newPayment
+                  });
+        
+            } catch (error) {
+                  if (error.code === 11000) { 
+                    return res.status(409).json({ message: "Error de duplicado: El DNI o el correo ya están registrados.", details: error.message });
+                  }
+                  console.error('Error en adminCreateMassRequest:', error);
+                  res.status(500).json({ message: "Error interno del servidor", details: error.message });
+              }
+              },
 
 };
