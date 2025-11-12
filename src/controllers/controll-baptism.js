@@ -55,17 +55,16 @@ module.exports = {
       },
 
   // --- 2. sendBaptismByEmail (CON lógica de pago) ---
+  // --- ✨ 'sendBaptismByEmail' CORREGIDA (SIN req.user) ---
   sendBaptismByEmail: async (req, res) => {
     const { documentNumber, sendToEmail } = req.body;
-    // Asumimos que la ruta SÍ tiene checkRoleAuth (como arreglamos)
-    const adminUserId = req.user._id; 
+    // const adminUserId = req.user._id; // <-- LÍNEA ELIMINADA
 
     if (!documentNumber || !sendToEmail) {
       return res.status(400).json({ message: "Faltan el número de documento o el correo de destino." });
     }
 
     try {
-      // 1. Buscamos el usuario y la partida de bautismo
       const user = await User.findOne({ documentNumber: documentNumber });
       if (!user) {
         return res.status(404).json({ message: 'Usuario no encontrado' });
@@ -76,60 +75,53 @@ module.exports = {
         return res.status(404).json({ message: 'Bautismo no encontrado para este usuario' });
       }
 
-      // 2. (Opción B) Creamos una "Solicitud de Partida" para enlazar el pago
+      // 2. (Opción B) Crear Solicitud "fantasma"
       const newDepartureRequest = new RequestDeparture({
         applicant: user._id,
         departureType: 'Baptism',
-        status: 'Enviada', // La marcamos como enviada/procesada de inmediato
+        status: 'Enviada', 
         requestDate: new Date()
       });
       const savedRequest = await newDepartureRequest.save();
 
-      // 3. Creamos el registro de Pago Aprobado
-      const amount = 20000; // OJO: Define el costo de la partida aquí
+      // 3. Crear Pago Aprobado
+      const amount = 20000; // OJO: Define el costo
       const description = `Pago (en efectivo) por Partida de Bautismo: ${user.name} ${user.lastName}`;
 
       const newPayment = new Payment({
         userId: user._id,
         serviceType: 'certificate',
-        serviceId: savedRequest._id, // <-- Enlazamos al RequestDeparture
-        onModel: 'RequestDeparture', // <-- Coincide con tu schema
+        serviceId: savedRequest._id, 
+        onModel: 'RequestDeparture', 
         amount: amount, 
         referenceCode: generateReference(),
         description: description,
         status: 'approved', 
         paymentMethod: 'cash_admin', 
         confirmedAt: new Date(),
-        payerInfo: {
-          name: `${user.name} ${user.lastName}`,
-          email: sendToEmail,
-          documentNumber: user.documentNumber,
-        },
+        payerInfo: { name: `${user.name} ${user.lastName}`, email: sendToEmail, documentNumber: user.documentNumber },
         epaycoData: {
           franchise: 'Efectivo (Admin)',
           bank: 'Caja Parroquial',
           responseMessage: 'Aprobada (Registro Manual)',
-          authorization: `ADMIN-${adminUserId}`,
+          authorization: 'ADMIN-MANUAL', // <-- CÓDIGO CORREGIDO
           transactionDate: new Date(),
         },
       });
       await newPayment.save();
       
-      // 4. Creamos los datos para la plantilla del email
+      // 4. Preparar datos para el email
       const requestData = {
         departureType: 'Baptism', 
-        applicant: {
-          name: user.name,
-          mail: sendToEmail 
-        }
+        applicant: { name: user.name, mail: sendToEmail }
       };
       
-      // 5. Enviamos el correo
+      // 5. Enviar correo
       await emailService.sendDepartureDocument(requestData, baptism);
       
       console.log('✅ Partida enviada y Pago Manual creado:', newPayment.referenceCode);
 
-      // 6. Enviar respuesta de éxito
+      // 6. Éxito
       res.status(200).json({ 
         message: `Partida de bautismo enviada a ${sendToEmail} y pago registrado.`,
         payment: newPayment
