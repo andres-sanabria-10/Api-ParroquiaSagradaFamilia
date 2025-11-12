@@ -172,7 +172,7 @@ module.exports = {
             documentNumber, typeDocument, name, lastName, mail, birthdate,
             date, time, intention
           } = req.body;
-          const adminUserId = req.user._id; // ID de la secretaria
+          
     
           // 1. Validar datos
           if (!date || !time || !intention) {
