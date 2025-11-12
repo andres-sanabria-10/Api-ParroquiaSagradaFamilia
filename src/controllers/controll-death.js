@@ -142,8 +142,8 @@ createDeath: async (req, res) => {
   },
 
   // --- ✨ NUEVO ENDPOINT PARA ENVIAR POR CORREO ---
-  // --- ✨ 'sendDeathByEmail' CORREGIDA (con departureId) ---
   sendDeathByEmail: async (req, res) => {
+    // 1. Obtenemos el DNI y el correo del cuerpo
     const { documentNumber, sendToEmail } = req.body;
 
     if (!documentNumber || !sendToEmail) {
@@ -151,7 +151,7 @@ createDeath: async (req, res) => {
     }
 
     try {
-      // 1. Buscamos la defunción
+      // 2. Buscamos la defunción
       const user = await User.findOne({ documentNumber: documentNumber });
       if (!user) {
         return res.status(404).json({ message: 'Usuario no encontrado' });
@@ -161,66 +161,25 @@ createDeath: async (req, res) => {
       if (!death) {
         return res.status(404).json({ message: 'Defunción no encontrada para este usuario' });
       }
-      
-      // 2. (Opción B) Crear Solicitud "fantasma"
-      const newDepartureRequest = new RequestDeparture({
-        applicant: user._id,
-        departureType: 'Death',
-        status: 'Enviada',
-        requestDate: new Date(),
-        departureId: death._id // <-- ✨ ¡AQUÍ ESTÁ LA CORRECCIÓN!
-      });
-      const savedRequest = await newDepartureRequest.save();
 
-      // 3. Crear Pago Aprobado
-      const amount = 20000; // OJO: Define el costo
-      const description = `Pago (en efectivo) por Partida de Defunción: ${user.name} ${user.lastName}`;
-
-      const newPayment = new Payment({
-        userId: user._id,
-        serviceType: 'certificate',
-        serviceId: savedRequest._id, 
-        onModel: 'RequestDeparture',
-        amount: amount, 
-        referenceCode: generateReference(),
-        description: description,
-        status: 'approved', 
-        paymentMethod: 'cash_admin', 
-        confirmedAt: new Date(),
-        payerInfo: { name: `${user.name} ${user.lastName}`, email: sendToEmail, documentNumber: user.documentNumber },
-        epaycoData: {
-          franchise: 'Efectivo (Admin)',
-          bank: 'Caja Parroquial',
-          responseMessage: 'Aprobada (Registro Manual)',
-          authorization: 'ADMIN-MANUAL',
-          transactionDate: new Date(),
-        },
-      });
-      await newPayment.save();
-
-      // 4. Preparar datos para el email
+      // 3. Creamos el objeto 'requestData' que tu servicio de email espera
       const requestData = {
-        departureType: 'Death',
+        departureType: 'Death', // Con 'D' mayúscula para tu pdfGenerator
         applicant: {
           name: death.dead.name,
-          mail: sendToEmail
+          mail: sendToEmail // ✨ El email que la secretaria ingresó
         }
       };
       
-      // 5. Enviar correo
+      // 4. Llamamos a la función correcta de tu servicio
       await emailService.sendDepartureDocument(requestData, death);
-      
-      console.log('✅ Partida enviada y Pago Manual creado:', newPayment.referenceCode);
 
-      // 6. Éxito
-      res.status(200).json({ 
-        message: `Partida de defunción enviada a ${sendToEmail} y pago registrado.`,
-        payment: newPayment 
-      });
+      // 5. Enviar respuesta de éxito
+      res.status(200).json({ message: `Partida de defunción enviada exitosamente a ${sendToEmail}` });
 
     } catch (error) {
       console.error('Error al enviar la partida de defunción:', error);
       res.status(500).json({ message: "Error interno del servidor", error: error.message });
     }
-  },
+  }
 };

@@ -159,88 +159,51 @@ deleteMarriageByDocumentNumber: async (req, res) => {
 },
 
 // --- ✨ NUEVO ENDPOINT PARA ENVIAR POR CORREO ---
-// --- ✨ 'sendMarriageByEmail' CORREGIDA (con departureId) ---
 sendMarriageByEmail: async (req, res) => {
-  const { documentNumber, sendToEmail } = req.body;
+    // 1. Obtenemos el DNI (del esposo) y el correo del cuerpo
+    const { documentNumber, sendToEmail } = req.body;
 
-  if (!documentNumber || !sendToEmail) {
-    return res.status(400).json({ message: "Faltan el número de documento o el correo de destino." });
-  }
-
-  try {
-    // 1. Buscamos el matrimonio
-    const user = await User.findOne({ documentNumber: documentNumber });
-    if (!user) {
-      return res.status(404).json({ message: 'Usuario (esposo) no encontrado' });
+    if (!documentNumber || !sendToEmail) {
+      return res.status(400).json({ message: "Faltan el número de documento o el correo de destino." });
     }
 
-    const marriage = await Marriage.findOne({ 
-      $or: [ { husband: user._id }, { wife: user._id } ]
-    }).populate(['husband', 'wife']);
-
-    if (!marriage) {
-      return res.status(404).json({ message: 'Matrimonio no encontrado para este usuario' });
-    }
-    
-    // 2. (Opción B) Crear Solicitud "fantasma"
-    const newDepartureRequest = new RequestDeparture({
-      applicant: user._id, 
-      departureType: 'Marriage',
-      status: 'Enviada',
-      requestDate: new Date(),
-      departureId: marriage._id // <-- ✨ ¡AQUÍ ESTÁ LA CORRECCIÓN!
-    });
-    const savedRequest = await newDepartureRequest.save();
-
-    // 3. Crear Pago Aprobado
-    const amount = 20000; // OJO: Define el costo
-    const description = `Pago (en efectivo) por Partida de Matrimonio: ${marriage.husband.name} y ${marriage.wife.name}`;
-    
-    const newPayment = new Payment({
-      userId: user._id,
-      serviceType: 'certificate',
-      serviceId: savedRequest._id, 
-      onModel: 'RequestDeparture',
-      amount: amount, 
-      referenceCode: generateReference(),
-      description: description,
-      status: 'approved', 
-      paymentMethod: 'cash_admin', 
-      confirmedAt: new Date(),
-      payerInfo: { name: `${user.name} ${user.lastName}`, email: sendToEmail, documentNumber: user.documentNumber },
-        epaycoData: {
-          franchise: 'Efectivo (Admin)',
-          bank: 'Caja Parroquial',
-          responseMessage: 'Aprobada (Registro Manual)',
-          authorization: 'ADMIN-MANUAL',
-          transactionDate: new Date(),
-        },
-    });
-    await newPayment.save();
-
-    // 4. Preparar datos para el email
-    const requestData = {
-      departureType: 'Marriage',
-      applicant: {
-        name: `${marriage.husband.name} y ${marriage.wife.name}`,
-        mail: sendToEmail
+    try {
+      // 2. Buscamos el matrimonio (usando la misma lógica que ya tenías)
+      // Usamos el DNI que viene en el body, no en params
+      const user = await User.findOne({ documentNumber: documentNumber });
+      if (!user) {
+        return res.status(404).json({ message: 'Usuario (esposo) no encontrado' });
       }
-    };
-    
-    // 5. Enviar correo
-    await emailService.sendDepartureDocument(requestData, marriage);
 
-    console.log('✅ Partida enviada y Pago Manual creado:', newPayment.referenceCode);
+      const marriage = await Marriage.findOne({ 
+        $or: [
+          { husband: user._id },
+          { wife: user._id }
+        ]
+      }).populate(['husband', 'wife']);
 
-    // 6. Éxito
-    res.status(200).json({ 
-      message: `Partida de matrimonio enviada a ${sendToEmail} y pago registrado.`,
-      payment: newPayment 
-    });
+      if (!marriage) {
+        return res.status(404).json({ message: 'Matrimonio no encontrado para este usuario' });
+      }
 
-  } catch (error) {
-    console.error('Error al enviar la partida de matrimonio:', error);
-    res.status(500).json({ message: "Error interno del servidor", error: error.message });
+      // 3. Creamos el objeto 'requestData' que tu servicio de email espera
+      const requestData = {
+        departureType: 'Marriage', // Con 'M' mayúscula para tu pdfGenerator
+        applicant: {
+          name: `${marriage.husband.name} y ${marriage.wife.name}`,
+          mail: sendToEmail // ✨ El email que la secretaria ingresó
+        }
+      };
+      
+      // 4. Llamamos a la función correcta de tu servicio
+      await emailService.sendDepartureDocument(requestData, marriage);
+
+      // 5. Enviar respuesta de éxito
+      res.status(200).json({ message: `Partida de matrimonio enviada exitosamente a ${sendToEmail}` });
+
+    } catch (error) {
+      console.error('Error al enviar la partida de matrimonio:', error);
+      res.status(500).json({ message: "Error interno del servidor", error: error.message });
+    }
   }
-},
 };
