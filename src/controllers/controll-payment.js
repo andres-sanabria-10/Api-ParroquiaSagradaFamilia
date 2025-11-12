@@ -266,20 +266,31 @@ const createPayment = async (req, res) => {
 
     // 🔑 VARIABLES DE ENTORNO CORRECTAS
     const EPAYCO_P_CUST_ID_CLIENTE = process.env.EPAYCO_P_CUST_ID_CLIENTE;
+    const EPAYCO_P_PUBLIC_KEY = process.env.EPAYCO_P_PUBLIC_KEY;
     const EPAYCO_P_KEY = process.env.EPAYCO_P_KEY;
 
     // ⚠️ VALIDACIÓN CRÍTICA
     if (!EPAYCO_P_CUST_ID_CLIENTE) {
       console.error('❌ EPAYCO_P_CUST_ID_CLIENTE no configurada');
-      await Payment.findByIdAndDelete(newPayment._id); // Eliminar pago creado
+      await Payment.findByIdAndDelete(newPayment._id);
       return res.status(500).json({
         error: 'Error de configuración del sistema de pagos',
         details: { message: 'Contacte al administrador - CUST_ID_CLIENTE no configurada' }
       });
     }
 
+    if (!EPAYCO_P_PUBLIC_KEY) {
+      console.error('❌ EPAYCO_P_PUBLIC_KEY no configurada');
+      await Payment.findByIdAndDelete(newPayment._id);
+      return res.status(500).json({
+        error: 'Error de configuración del sistema de pagos',
+        details: { message: 'Contacte al administrador - PUBLIC_KEY no configurada' }
+      });
+    }
+
     console.log('🔑 Configuración ePayco:', {
       EPAYCO_P_CUST_ID_CLIENTE: EPAYCO_P_CUST_ID_CLIENTE.substring(0, 4) + '...',
+      EPAYCO_P_PUBLIC_KEY: EPAYCO_P_PUBLIC_KEY.substring(0, 10) + '...',
       EPAYCO_P_KEY: EPAYCO_P_KEY ? 'Configurada ✅' : '❌ NO configurada',
       testMode,
       paymentExpiresIn: PAYMENT_EXPIRATION_MINUTES + ' minutos'
