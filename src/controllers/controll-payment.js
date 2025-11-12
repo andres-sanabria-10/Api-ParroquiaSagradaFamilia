@@ -545,10 +545,77 @@ const getPaymentStatus = async (req, res) => {
   }
 };
 
+
+
+const adminCreateCashPayment = async (req, res) => {
+  try {
+    const { 
+      userId, 
+      serviceType, 
+      serviceId, 
+      amount, 
+      description,
+      payerInfo // Objeto con { name, email, phone, documentType, documentNumber }
+    } = req.body;
+    const adminUserId = req.user._id; // ID de la secretaria que está registrando
+
+    // 1. Validaciones básicas
+    if (!userId || !serviceType || !serviceId || !amount || !description) {
+      return res.status(400).json({ error: 'Faltan datos (userId, serviceType, serviceId, amount, description)' });
+    }
+    
+    const onModel = serviceType === 'mass' ? 'RequestMass' : 'RequestDeparture';
+
+    // 2. Generar una referencia única
+    const referenceCode = generateReference();
+
+    // 3. Crear el registro de pago
+    const newPayment = new Payment({
+      userId,
+      serviceType,
+      serviceId,
+      onModel,
+      amount,
+      referenceCode,
+      description,
+      status: 'approved', // ✨ Se aprueba inmediatamente
+      paymentMethod: 'cash_admin', // Método especial para diferenciarlo de ePayco
+      confirmedAt: new Date(), // Se confirma al instante
+      expiresAt: null, // No expira
+      
+      // Información del pagador (si se pasó)
+      payerInfo: payerInfo || {},
+
+      // Datos "simulados" de ePayco para consistencia (opcional)
+      epaycoData: {
+        franchise: 'Efectivo (Admin)',
+        bank: 'Caja Parroquial',
+        responseMessage: 'Aprobada (Registro Manual)',
+        authorization: `ADMIN-${adminUserId}`,
+        transactionDate: new Date(),
+      },
+    });
+
+    await newPayment.save();
+
+    console.log('✅ Pago manual (admin) creado:', newPayment.referenceCode);
+    res.status(201).json({ success: true, payment: newPayment });
+
+  } catch (error) {
+    console.error('💥 Error en adminCreateCashPayment:', error);
+    res.status(500).json({
+      error: 'Error al crear el pago manual',
+      details: { message: error.message }
+    });
+  }
+};
+
 module.exports = {
   createPayment,
   confirmPayment,
   getPaymentHistory,
   getPaymentById,
   getPaymentStatus,
+  adminCreateCashPayment,
+  generateReference,
 };

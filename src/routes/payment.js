@@ -7,6 +7,8 @@ const {
   getPaymentHistory,
   getPaymentById,
   getPaymentStatus,
+  adminCreateCashPayment,
+  generateReference,
 } = require('../controllers/controll-payment');
 
 // Middleware de autenticación
@@ -20,5 +22,7 @@ router.get('/:id', checkAuth, getPaymentById);
 
 // 🌐 Ruta pública (webhook de ePayco - NO requiere autenticación)
 router.post('/confirm', confirmPayment);
+
+router.post('/admin-cash-payment', adminCreateCashPayment);
 
 module.exports = router;
