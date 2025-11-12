@@ -42,42 +42,54 @@ module.exports = {
                 return res.status(400).json({ message: 'Faltan datos requeridos' });
             }
     
-            // Crear una nueva solicitud de misa
+            // Crear una nueva solicitud de misa (queda Pendiente)
             const newRequestMass = new RequestMass({
                 date,
                 time,
                 intention,
                 applicant: userData._id
             });
-    
+
+            const savedRequestMass = await newRequestMass.save();
+
+            // Reservar temporalmente el slot en la programación de misas
+            // La reserva tendrá una expiración corta (misma ventana que los pagos pendientes)
+            const RESERVATION_EXPIRATION_MINUTES = 30;
+            const reservedUntil = new Date(Date.now() + RESERVATION_EXPIRATION_MINUTES * 60 * 1000);
+
             // Buscar la programación de misas para la fecha especificada
             const schedule = await MassSchedule.findOne({ date });
-    
+
             if (!schedule) {
+                // Si no hay programación, eliminamos la solicitud creada para evitar inconsistencias
+                await RequestMass.findByIdAndDelete(savedRequestMass._id);
                 return res.status(404).json({ message: 'No se encontró una programación de misas para esta fecha' });
             }
-    
-            // Encontrar el horario específico y actualizar su estado
+
+            // Encontrar el horario específico
             const timeSlotIndex = schedule.timeSlots.findIndex(slot => slot.time === time);
-            
             if (timeSlotIndex === -1) {
+                await RequestMass.findByIdAndDelete(savedRequestMass._id);
                 return res.status(404).json({ message: 'El horario especificado no está disponible para esta fecha' });
             }
-    
+
             const timeSlot = schedule.timeSlots[timeSlotIndex];
-    
-            if (timeSlot.status === 'Ocupado') {
-                return res.status(400).json({ message: 'El horario ya está ocupado' });
+            // Si ya está ocupado o reservado por otro, rechazamos
+            if (timeSlot.status === 'Ocupado' || (timeSlot.reservedUntil && timeSlot.reservedUntil > new Date())) {
+                // Liberar la solicitud creada
+                await RequestMass.findByIdAndDelete(savedRequestMass._id);
+                return res.status(400).json({ message: 'El horario ya está ocupado o reservado' });
             }
-    
-            // Actualizar el estado del horario a 'Ocupado'
-            schedule.timeSlots[timeSlotIndex].status = 'Ocupado';
+
+            // Marcar como reservado temporalmente
+            schedule.timeSlots[timeSlotIndex].status = 'Reservado';
+            schedule.timeSlots[timeSlotIndex].available = false;
+            schedule.timeSlots[timeSlotIndex].reservedBy = savedRequestMass._id;
+            schedule.timeSlots[timeSlotIndex].reservedUntil = reservedUntil;
+
             await schedule.save();
-    
-            // Guardar la nueva solicitud de misa
-            const savedRequestMass = await newRequestMass.save();
-    
-            // Enviar respuesta de éxito
+
+            // Responder con la solicitud creada (estado Pendiente)
             res.status(201).json(savedRequestMass);
         } catch (error) {
             console.error('Error al crear la solicitud de misa:', error);

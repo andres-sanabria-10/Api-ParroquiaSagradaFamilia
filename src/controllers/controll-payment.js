@@ -1,11 +1,12 @@
 const Payment = require('../models/payment');
 const RequestMass = require('../models/requestMass');
 const RequestDeparture = require('../models/requestDeparture');
+const MassSchedule = require('../models/massSchedule');
 const userModel = require('../models/user');
 const crypto = require('crypto');
 
 // ⏱️ Tiempo de expiración de pagos pendientes (en minutos)
-const PAYMENT_EXPIRATION_MINUTES = 30;
+const PAYMENT_EXPIRATION_MINUTES = 30; // ⚠️ Cambiado de 2 a 30 minutos
 
 // Modo de pruebas ePayco (normalizado)
 const testMode = String(process.env.EPAYCO_P_TESTING || '').toLowerCase() === 'true';
@@ -36,11 +37,9 @@ const mapDocumentType = (documentTypeName) => {
 
 /**
  * 🧹 Limpiar pagos pendientes expirados
- * Esta función se ejecuta antes de crear un nuevo pago
  */
 const cleanExpiredPendingPayments = async (serviceId, serviceType) => {
   try {
-    // Buscar pagos pendientes expirados para este servicio (usar expiresAt cuando esté disponible)
     const now = new Date();
     const expiredPayments = await Payment.find({
       serviceId,
@@ -52,7 +51,6 @@ const cleanExpiredPendingPayments = async (serviceId, serviceType) => {
     if (expiredPayments.length > 0) {
       console.log(`🧹 Limpiando ${expiredPayments.length} pago(s) pendiente(s) expirado(s)...`);
       
-      // Actualizar estado a 'expired'
       await Payment.updateMany(
         {
           serviceId,
@@ -68,6 +66,28 @@ const cleanExpiredPendingPayments = async (serviceId, serviceType) => {
         }
       );
 
+      try {
+        for (const p of expiredPayments) {
+          if (p.serviceType === 'mass' && p.serviceId) {
+            const reqId = p.serviceId;
+            await MassSchedule.updateMany(
+              { 'timeSlots.reservedBy': reqId },
+              {
+                $set: {
+                  'timeSlots.$.status': 'Libre',
+                  'timeSlots.$.available': true,
+                  'timeSlots.$.reservedBy': null,
+                  'timeSlots.$.reservedUntil': null
+                }
+              }
+            );
+            await RequestMass.findByIdAndUpdate(reqId, { status: 'Expirada' }).catch(() => {});
+          }
+        }
+      } catch (err) {
+        console.error('❌ Error liberando reservas tras expiración de pagos:', err);
+      }
+
       console.log('✅ Pagos expirados limpiados correctamente');
     }
 
@@ -79,7 +99,7 @@ const cleanExpiredPendingPayments = async (serviceId, serviceType) => {
 };
 
 /**
- * 💳 Crear pago y devolver datos para ePayco
+ * 💳 Crear pago y devolver datos para ePayco Standard Checkout
  */
 const createPayment = async (req, res) => {
   try {
@@ -99,7 +119,6 @@ const createPayment = async (req, res) => {
       return res.status(400).json({ error: 'Monto inválido' });
     }
 
-    // 💰 Validar monto mínimo
     if (amount < 5000) {
       return res.status(400).json({
         error: 'Monto muy bajo',
@@ -107,7 +126,6 @@ const createPayment = async (req, res) => {
       });
     }
 
-    // 📱 Validar teléfono y dirección
     if (!phone || !/^[0-9]{10}$/.test(phone.replace(/\D/g, ''))) {
       return res.status(400).json({
         error: 'Teléfono inválido',
@@ -122,10 +140,10 @@ const createPayment = async (req, res) => {
       });
     }
 
-    // 🧹 LIMPIAR PAGOS PENDIENTES EXPIRADOS PRIMERO
+    // 🧹 LIMPIAR PAGOS PENDIENTES EXPIRADOS
     await cleanExpiredPendingPayments(serviceId, serviceType);
 
-    // 🔍 Verificar que el servicio existe y pertenece al usuario
+    // 🔍 Verificar servicio
     let service;
     let onModel;
 
@@ -154,13 +172,12 @@ const createPayment = async (req, res) => {
       }
     }
 
-    // 🔍 Verificar que no exista ya un pago pendiente o aprobado VÁLIDO (no expirado)
+    // 🔍 Verificar pagos existentes
     const now = new Date();
     const existingPayment = await Payment.findOne({
       serviceId,
       serviceType,
       status: { $in: ['pending', 'approved'] },
-      // Validar que si es pending, no esté expirado (usando expiresAt)
       $or: [
         { status: 'approved' },
         { 
@@ -189,7 +206,7 @@ const createPayment = async (req, res) => {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
-    // ✅ Validar campos obligatorios del usuario
+    // ✅ Validar campos del usuario
     const validationErrors = [];
 
     if (!user.mail || !user.mail.includes('@')) {
@@ -212,17 +229,17 @@ const createPayment = async (req, res) => {
       });
     }
 
-    // 📱 Limpiar teléfono y dirección
+    // 📱 Limpiar datos
     const phoneNumber = phone.replace(/[^0-9]/g, '').substring(0, 10);
     const userAddress = address
       .trim()
       .replace(/[^\w\s,.-áéíóúñÁÉÍÓÚÑ]/g, '')
       .substring(0, 100);
 
-    // 🔒 Generar referencia única
+    // 🔒 Generar referencia
     const referenceCode = generateReference();
 
-    // 💾 Crear registro de pago en BD
+    // 💾 Crear pago
     const newPayment = new Payment({
       userId,
       serviceType,
@@ -233,7 +250,7 @@ const createPayment = async (req, res) => {
       description: description || `Pago por ${serviceType === 'mass' ? 'solicitud de misa' : 'certificado de partida'}`,
       status: 'pending',
       paymentMethod: 'epayco',
-      expiresAt: new Date(Date.now() + PAYMENT_EXPIRATION_MINUTES * 60 * 1000), // Agregar fecha de expiración
+      expiresAt: new Date(Date.now() + PAYMENT_EXPIRATION_MINUTES * 60 * 1000),
       payerInfo: {
         name: `${user.name} ${user.lastName}`,
         email: user.mail,
@@ -244,15 +261,27 @@ const createPayment = async (req, res) => {
 
     await newPayment.save();
 
-    // 📋 Mapear tipo de documento
+    // 📋 Mapear documento
     const mappedDocType = mapDocumentType(user.typeDocument?.document_type_name);
 
-  // 🔑 Variables de entorno
-  const publicKey = process.env.EPAYCO_P_PUBLIC_KEY;
-  const privateKey = process.env.EPAYCO_P_KEY;
+    // 🔑 VARIABLES DE ENTORNO CORRECTAS
+    const EPAYCO_P_CUST_ID_CLIENTE = process.env.EPAYCO_P_CUST_ID_CLIENTE;
+    const EPAYCO_P_PUBLIC_KEY = process.env.EPAYCO_P_PUBLIC_KEY;
+    const EPAYCO_P_KEY = process.env.EPAYCO_P_KEY;
 
-    if (!publicKey) {
+    // ⚠️ VALIDACIÓN CRÍTICA
+    if (!EPAYCO_P_CUST_ID_CLIENTE) {
+      console.error('❌ EPAYCO_P_CUST_ID_CLIENTE no configurada');
+      await Payment.findByIdAndDelete(newPayment._id);
+      return res.status(500).json({
+        error: 'Error de configuración del sistema de pagos',
+        details: { message: 'Contacte al administrador - CUST_ID_CLIENTE no configurada' }
+      });
+    }
+
+    if (!EPAYCO_P_PUBLIC_KEY) {
       console.error('❌ EPAYCO_P_PUBLIC_KEY no configurada');
+      await Payment.findByIdAndDelete(newPayment._id);
       return res.status(500).json({
         error: 'Error de configuración del sistema de pagos',
         details: { message: 'Contacte al administrador - PUBLIC_KEY no configurada' }
@@ -260,17 +289,21 @@ const createPayment = async (req, res) => {
     }
 
     console.log('🔑 Configuración ePayco:', {
-      publicKey: publicKey.substring(0, 10) + '...',
-      privateKey: privateKey ? 'Configurada' : '❌ NO configurada',
+      EPAYCO_P_CUST_ID_CLIENTE: EPAYCO_P_CUST_ID_CLIENTE.substring(0, 4) + '...',
+      EPAYCO_P_PUBLIC_KEY: EPAYCO_P_PUBLIC_KEY.substring(0, 10) + '...',
+      EPAYCO_P_KEY: EPAYCO_P_KEY ? 'Configurada ✅' : '❌ NO configurada',
       testMode,
       paymentExpiresIn: PAYMENT_EXPIRATION_MINUTES + ' minutos'
     });
 
-    // 📦 DATOS PARA EPAYCO
+    // 📦 DATOS PARA EPAYCO STANDARD CHECKOUT - CORREGIDO
     const epaycoData = {
-      publicKey: publicKey,
+      // ⚠️ CAMBIO CRÍTICO: Enviar EPAYCO_P_CUST_ID_CLIENTE con nombre correcto
+      EPAYCO_P_CUST_ID_CLIENTE: EPAYCO_P_CUST_ID_CLIENTE,
+      EPAYCO_P_PUBLIC_KEY: EPAYCO_P_PUBLIC_KEY,
       test: testMode ? 'true' : 'false',
 
+      // Información del pago
       name: newPayment.description,
       description: newPayment.description,
       invoice: referenceCode,
@@ -279,13 +312,15 @@ const createPayment = async (req, res) => {
       taxBase: '0',
       tax: '0',
 
+      // Configuración regional
       country: 'co',
       lang: 'es',
 
-      external: 'true',
-      responseUrl: `${process.env.FRONTEND_URL}/payment/response?invoice=${referenceCode}`,
+      // URLs de respuesta
+      responseUrl: `${process.env.FRONTEND_URL}/payment/response`,
       confirmationUrl: `${process.env.BACKEND_URL}/api/payment/confirm`,
 
+      // Datos de facturación
       name_billing: `${user.name} ${user.lastName}`.trim(),
       email_billing: user.mail.trim(),
       mobilephone_billing: phoneNumber,
@@ -293,20 +328,20 @@ const createPayment = async (req, res) => {
       type_doc_billing: mappedDocType,
       number_doc_billing: user.documentNumber.toString().replace(/[^\w]/g, ''),
 
+      // Extras
       extra1: userId.toString(),
       extra2: serviceType,
       extra3: serviceId.toString(),
-
-      methodsDisable: JSON.stringify([]),
     };
 
-    console.log('✅ Pago creado con expiración:', {
+    console.log('✅ Pago creado exitosamente:', {
       invoice: referenceCode,
       expiresAt: newPayment.expiresAt,
-      expiresInMinutes: PAYMENT_EXPIRATION_MINUTES
+      expiresInMinutes: PAYMENT_EXPIRATION_MINUTES,
+      EPAYCO_P_CUST_ID_CLIENTE: EPAYCO_P_CUST_ID_CLIENTE.substring(0, 4) + '...'
     });
 
-    // ✅ Retornar los datos para el frontend
+    // ✅ Retornar datos
     return res.status(201).json({
       success: true,
       message: 'Pago creado exitosamente',
@@ -361,7 +396,7 @@ const confirmPayment = async (req, res) => {
       x_extra3,
     } = req.body;
 
-    // 🔍 Buscar el pago por referencia
+    // 🔍 Buscar pago
     const payment = await Payment.findOne({ referenceCode: x_id_invoice });
 
     if (!payment) {
@@ -372,10 +407,9 @@ const confirmPayment = async (req, res) => {
     // 🔐 Validar firma (solo en producción)
     const pKey = process.env.EPAYCO_P_KEY;
 
-    // Validar que el x_cust_id_cliente coincida con la configuración (si está definida)
     const expectedCustId = process.env.EPAYCO_P_CUST_ID_CLIENTE;
     if (expectedCustId && x_cust_id_cliente && expectedCustId.toString() !== x_cust_id_cliente.toString()) {
-      console.error('❌ x_cust_id_cliente no coincide con la configuración. Posible petición maliciosa.');
+      console.error('❌ x_cust_id_cliente no coincide. Posible petición maliciosa.');
       return res.status(200).send('OK');
     }
 
@@ -399,7 +433,7 @@ const confirmPayment = async (req, res) => {
       console.warn('⚠️ Validación de firma omitida (modo prueba)');
     }
 
-    // 📝 Actualizar datos del pago
+    // 📝 Actualizar pago
     payment.epaycoReference = x_ref_payco;
     payment.transactionId = x_transaction_id;
     payment.epaycoData = {
@@ -412,18 +446,37 @@ const confirmPayment = async (req, res) => {
       transactionDate: x_transaction_date ? new Date(x_transaction_date) : new Date(),
     };
 
-    // 🎯 Actualizar estado según respuesta
+    // 🎯 Actualizar estado
     const responseCode = x_cod_response?.toString();
 
     if (responseCode === '1') {
       payment.status = 'approved';
       payment.confirmedAt = new Date();
 
-      // 📄 Actualizar el servicio relacionado
+      // 📄 Actualizar servicio
       if (payment.serviceType === 'mass') {
-        await RequestMass.findByIdAndUpdate(payment.serviceId, {
+        const updatedReq = await RequestMass.findByIdAndUpdate(payment.serviceId, {
           status: 'Confirmada',
-        });
+        }, { new: true });
+
+        try {
+          if (updatedReq) {
+            await MassSchedule.updateOne(
+              { date: updatedReq.date, 'timeSlots.time': updatedReq.time, 'timeSlots.reservedBy': updatedReq._id },
+              {
+                $set: {
+                  'timeSlots.$.status': 'Ocupado',
+                  'timeSlots.$.available': false,
+                  'timeSlots.$.reservedBy': null,
+                  'timeSlots.$.reservedUntil': null
+                }
+              }
+            );
+          }
+        } catch (err) {
+          console.error('❌ Error actualizando MassSchedule:', err);
+        }
+
         console.log('✅ Solicitud de misa confirmada:', payment.serviceId);
       } else if (payment.serviceType === 'certificate') {
         await RequestDeparture.findByIdAndUpdate(payment.serviceId, {
@@ -445,7 +498,7 @@ const confirmPayment = async (req, res) => {
 
     await payment.save();
 
-    console.log('✅ Pago actualizado correctamente:', {
+    console.log('✅ Pago actualizado:', {
       id: payment._id,
       status: payment.status,
       referenceCode: payment.referenceCode
@@ -524,7 +577,7 @@ const getPaymentStatus = async (req, res) => {
     const userId = req.user._id;
 
     const payment = await Payment.findOne({ referenceCode, userId })
-      .select('status amount referenceCode epaycoData confirmedAt')
+      .select('status amount referenceCode epaycoData confirmedAt serviceType')
       .lean();
 
     if (!payment) {
@@ -545,8 +598,6 @@ const getPaymentStatus = async (req, res) => {
   }
 };
 
-
-
 const adminCreateCashPayment = async (req, res) => {
   try {
     const { 
@@ -555,21 +606,17 @@ const adminCreateCashPayment = async (req, res) => {
       serviceId, 
       amount, 
       description,
-      payerInfo // Objeto con { name, email, phone, documentType, documentNumber }
+      payerInfo
     } = req.body;
-    const adminUserId = req.user._id; // ID de la secretaria que está registrando
+    const adminUserId = req.user._id;
 
-    // 1. Validaciones básicas
     if (!userId || !serviceType || !serviceId || !amount || !description) {
-      return res.status(400).json({ error: 'Faltan datos (userId, serviceType, serviceId, amount, description)' });
+      return res.status(400).json({ error: 'Faltan datos requeridos' });
     }
     
     const onModel = serviceType === 'mass' ? 'RequestMass' : 'RequestDeparture';
-
-    // 2. Generar una referencia única
     const referenceCode = generateReference();
 
-    // 3. Crear el registro de pago
     const newPayment = new Payment({
       userId,
       serviceType,
@@ -578,15 +625,11 @@ const adminCreateCashPayment = async (req, res) => {
       amount,
       referenceCode,
       description,
-      status: 'approved', // ✨ Se aprueba inmediatamente
-      paymentMethod: 'cash_admin', // Método especial para diferenciarlo de ePayco
-      confirmedAt: new Date(), // Se confirma al instante
-      expiresAt: null, // No expira
-      
-      // Información del pagador (si se pasó)
+      status: 'approved',
+      paymentMethod: 'cash_admin',
+      confirmedAt: new Date(),
+      expiresAt: null,
       payerInfo: payerInfo || {},
-
-      // Datos "simulados" de ePayco para consistencia (opcional)
       epaycoData: {
         franchise: 'Efectivo (Admin)',
         bank: 'Caja Parroquial',
