@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-
+const checkRoleAuth = require('../middleware/roleAuth');
 
 const {
   createRequestMass,
@@ -23,6 +23,6 @@ router.get('/confirmed', getConfirmedRequestMasses);
 
 router.delete('/:id', deleteRequest);
 
-router.post('/admin-create', adminCreateMassRequest);
+router.post('/admin-create',checkRoleAuth(['admin', 'super']), adminCreateMassRequest);
 
 module.exports = router;
