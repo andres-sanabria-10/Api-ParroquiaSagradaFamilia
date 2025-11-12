@@ -227,7 +227,7 @@ module.exports = {
               franchise: 'Efectivo (Admin)',
               bank: 'Caja Parroquial',
               responseMessage: 'Aprobada (Registro Manual)',
-              authorization: `ADMIN-${adminUserId}`,
+              authorization: 'ADMIN-MANUAL',
               transactionDate: new Date(),
             },
           });

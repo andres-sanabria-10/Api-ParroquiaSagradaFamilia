@@ -23,6 +23,6 @@ router.get('/confirmed', getConfirmedRequestMasses);
 
 router.delete('/:id', deleteRequest);
 
-router.post('/admin-create',checkRoleAuth(['admin', 'super']), adminCreateMassRequest);
+router.post('/admin-create', adminCreateMassRequest);
 
 module.exports = router;
