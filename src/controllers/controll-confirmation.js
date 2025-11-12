@@ -119,7 +119,6 @@ module.exports = {
 
   // --- ✨ FUNCIÓN `sendConfirmationByEmail` REESCRITA ---
   sendConfirmationByEmail: async (req, res) => {
-    // 1. Obtenemos el DNI y el correo del cuerpo de la solicitud
     const { documentNumber, sendToEmail } = req.body;
 
     if (!documentNumber || !sendToEmail) {
@@ -127,7 +126,7 @@ module.exports = {
     }
 
     try {
-      // 2. Buscamos la confirmación (igual que en tu función get)
+      // 1. Buscamos la confirmación
       const user = await User.findOne({ documentNumber: documentNumber });
       if (!user) {
         return res.status(404).json({ message: 'Usuario no encontrado' });
@@ -138,25 +137,65 @@ module.exports = {
         return res.status(404).json({ message: 'Confirmación no encontrada para este usuario' });
       }
 
-      // 3. Creamos el objeto 'requestData' que tu servicio de email espera
+      // 2. (Opción B) Crear Solicitud "fantasma"
+      const newDepartureRequest = new RequestDeparture({
+        applicant: user._id,
+        departureType: 'Confirmation',
+        status: 'Enviada',
+        requestDate: new Date(),
+        departureId: confirmation._id // <-- ✨ ¡AQUÍ ESTÁ LA CORRECCIÓN!
+      });
+      const savedRequest = await newDepartureRequest.save();
+
+      // 3. Crear Pago Aprobado
+      const amount = 20000; // OJO: Define el costo
+      const description = `Pago (en efectivo) por Partida de Confirmación: ${user.name} ${user.lastName}`;
+
+      const newPayment = new Payment({
+        userId: user._id,
+        serviceType: 'certificate',
+        serviceId: savedRequest._id, 
+        onModel: 'RequestDeparture',
+        amount: amount, 
+        referenceCode: generateReference(),
+        description: description,
+        status: 'approved', 
+        paymentMethod: 'cash_admin', 
+        confirmedAt: new Date(),
+        payerInfo: { name: `${user.name} ${user.lastName}`, email: sendToEmail, documentNumber: user.documentNumber },
+        epaycoData: {
+          franchise: 'Efectivo (Admin)',
+          bank: 'Caja Parroquial',
+          responseMessage: 'Aprobada (Registro Manual)',
+          authorization: 'ADMIN-MANUAL',
+          transactionDate: new Date(),
+        },
+      });
+      await newPayment.save();
+
+      // 4. Preparar datos para el email
       const requestData = {
-        departureType: 'Confirmation', // Usamos 'Confirmation' (C mayúscula) como espera tu pdfGenerator
+        departureType: 'Confirmation',
         applicant: {
           name: confirmation.confirmed.name,
-          mail: sendToEmail // ✨ Aquí ponemos el email que la secretaria ingresó
+          mail: sendToEmail
         }
       };
       
-      // 4. Llamamos a la función correcta de tu servicio
-      // Le pasamos los dos argumentos que espera: requestData y departureData
+      // 5. Enviar correo
       await emailService.sendDepartureDocument(requestData, confirmation);
+      
+      console.log('✅ Partida enviada y Pago Manual creado:', newPayment.referenceCode);
 
-      // 5. Enviar respuesta de éxito
-      res.status(200).json({ message: `Partida de confirmación enviada exitosamente a ${sendToEmail}` });
+      // 6. Éxito
+      res.status(200).json({ 
+        message: `Partida de confirmación enviada a ${sendToEmail} y pago registrado.`,
+        payment: newPayment
+      });
 
     } catch (error) {
       console.error('Error al enviar la partida de confirmación:', error);
       res.status(500).json({ message: "Error interno del servidor", error: error.message });
     }
-  }
+  },
 };
