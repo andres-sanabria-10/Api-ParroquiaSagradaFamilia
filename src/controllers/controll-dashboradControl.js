@@ -2,7 +2,7 @@ const RequestMass = require('../models/requestMass');
 const RequestDeparture = require('../models/requestDeparture');
 const MassSchedule = require('../models/massSchedule');
 const User = require('../models/user');
-const Payment = require('../models/payment'); // <-- ✨ 1. Importamos Payment
+const Payment = require('../models/payment');
 const { addDays, startOfDay, endOfDay, add, startOfMonth, endOfMonth } = require('date-fns');
 
 module.exports = {
@@ -21,27 +21,34 @@ module.exports = {
       // --- DATOS PARA SECRETARIA ---
       const pendingCertificateRequests = await RequestDeparture.countDocuments({ status: 'Pendiente' });
       const pendingMassRequests = await RequestMass.countDocuments({ status: 'Pendiente' });
-      const processedCertificates = await RequestDeparture.countDocuments({ status: 'Enviada', updatedAt: { $gte: last30Days } });
+      
+      // ✨ CORRECCIÓN 1: Usamos 'requestDate' en lugar de 'updatedAt'
+      const processedCertificates = await RequestDeparture.countDocuments({
+        status: 'Enviada',
+        requestDate: { $gte: last30Days } 
+      });
+      
       const scheduledMasses = await RequestMass.countDocuments({ status: 'Confirmada', date: { $gte: today, $lte: next7Days } });
 
-      // --- ✨ DATOS PARA PÁRROCO ---
+      // --- DATOS PARA PÁRROCO ---
       
-      // 1. Feligreses Activos (Total usuarios)
+      // 1. Feligreses Activos
       const totalUsers = await User.countDocuments();
 
-      // 2. Misas este Mes (Confirmadas dentro del rango del mes actual)
+      // 2. Misas este Mes
       const massesThisMonth = await RequestMass.countDocuments({
         status: 'Confirmada',
         date: { $gte: startMonth, $lte: endMonth }
       });
 
-      // 3. Partidas Emitidas (Enviadas dentro del rango del mes actual)
+      // ✨ CORRECCIÓN 2: Usamos 'requestDate' aquí también
+      // 3. Partidas Emitidas (Este Mes)
       const certificatesThisMonth = await RequestDeparture.countDocuments({
         status: 'Enviada',
-        updatedAt: { $gte: startMonth, $lte: endMonth }
+        requestDate: { $gte: startMonth, $lte: endMonth }
       });
 
-      // 4. Ingresos del Mes (Suma de pagos aprobados este mes)
+      // 4. Ingresos del Mes
       const paymentsThisMonth = await Payment.find({
         status: 'approved',
         createdAt: { $gte: startMonth, $lte: endMonth }
@@ -68,7 +75,7 @@ module.exports = {
     }
   },
 
-  // --- Endpoint para la Actividad Reciente (Igual que antes) ---
+  // --- Endpoint para la Actividad Reciente (Sin cambios) ---
   getRecentActivity: async (req, res) => {
     try {
       const recentCertificates = await RequestDeparture.find({ status: 'Pendiente' }).sort({ createdAt: -1 }).limit(3).populate('applicant', 'name lastName');
@@ -79,7 +86,7 @@ module.exports = {
         type: 'partida',
         description: `Solicitud de Partida de ${r.departureType}`,
         applicantName: r.applicant ? `${r.applicant.name} ${r.applicant.lastName}` : 'Usuario eliminado',
-        createdAt: r.createdAt
+        createdAt: r.createdAt // Aquí sí usamos createdAt si el modelo lo tiene (por timestamps: true), si no, cámbialo a requestDate
       }));
 
       const formattedMasses = recentMasses.map(r => ({
