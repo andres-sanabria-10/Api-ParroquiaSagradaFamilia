@@ -1,8 +1,9 @@
 const RequestMass = require('../models/requestMass');
 const RequestDeparture = require('../models/requestDeparture');
 const MassSchedule = require('../models/massSchedule');
-const User = require('../models/user'); // <-- ✨ 1. IMPORTAR EL MODELO 'User'
-const { addDays, startOfDay, endOfDay, add } = require('date-fns');
+const User = require('../models/user');
+const Payment = require('../models/payment'); // <-- ✨ 1. Importamos Payment
+const { addDays, startOfDay, endOfDay, add, startOfMonth, endOfMonth } = require('date-fns');
 
 module.exports = {
 
@@ -12,34 +13,54 @@ module.exports = {
       const today = startOfDay(new Date());
       const next7Days = endOfDay(addDays(today, 7));
       const last30Days = startOfDay(add(today, { days: -30 }));
+      
+      // Fechas para "Este Mes"
+      const startMonth = startOfMonth(new Date());
+      const endMonth = endOfMonth(new Date());
 
-      // 1. Solicitudes de Partidas Pendientes
+      // --- DATOS PARA SECRETARIA ---
       const pendingCertificateRequests = await RequestDeparture.countDocuments({ status: 'Pendiente' });
-      
-      // 2. Solicitudes de Misas Pendientes
       const pendingMassRequests = await RequestMass.countDocuments({ status: 'Pendiente' });
-      
-      // 3. Partidas Procesadas (últimos 30 días)
-      const processedCertificates = await RequestDeparture.countDocuments({
-        status: 'Enviada',
-        updatedAt: { $gte: last30Days } 
-      });
-      
-      // 4. Misas Programadas (próximos 7 días)
-      const scheduledMasses = await RequestMass.countDocuments({
-        status: 'Confirmada', 
-        date: { $gte: today, $lte: next7Days }
-      });
+      const processedCertificates = await RequestDeparture.countDocuments({ status: 'Enviada', updatedAt: { $gte: last30Days } });
+      const scheduledMasses = await RequestMass.countDocuments({ status: 'Confirmada', date: { $gte: today, $lte: next7Days } });
 
-      // --- ✨ 2. NUEVA LÍNEA PARA CONTAR FELIGRESES ---
-      const totalUsers = await User.countDocuments(); // Contamos todos los usuarios
+      // --- ✨ DATOS PARA PÁRROCO ---
+      
+      // 1. Feligreses Activos (Total usuarios)
+      const totalUsers = await User.countDocuments();
+
+      // 2. Misas este Mes (Confirmadas dentro del rango del mes actual)
+      const massesThisMonth = await RequestMass.countDocuments({
+        status: 'Confirmada',
+        date: { $gte: startMonth, $lte: endMonth }
+      });
+
+      // 3. Partidas Emitidas (Enviadas dentro del rango del mes actual)
+      const certificatesThisMonth = await RequestDeparture.countDocuments({
+        status: 'Enviada',
+        updatedAt: { $gte: startMonth, $lte: endMonth }
+      });
+
+      // 4. Ingresos del Mes (Suma de pagos aprobados este mes)
+      const paymentsThisMonth = await Payment.find({
+        status: 'approved',
+        createdAt: { $gte: startMonth, $lte: endMonth }
+      });
+      
+      const incomeThisMonth = paymentsThisMonth.reduce((sum, payment) => sum + payment.amount, 0);
+
 
       res.status(200).json({
+        // Datos Secretaria
         pendingCertificateRequests,
         pendingMassRequests,
         processedCertificates,
         scheduledMasses,
-        totalUsers // <-- ✨ 3. AÑADIMOS EL NUEVO DATO A LA RESPUESTA
+        // Datos Párroco
+        totalUsers,
+        massesThisMonth,
+        certificatesThisMonth,
+        incomeThisMonth
       });
 
     } catch (error) {
@@ -47,18 +68,12 @@ module.exports = {
     }
   },
 
-  // --- Endpoint para la Actividad Reciente ---
+  // --- Endpoint para la Actividad Reciente (Igual que antes) ---
   getRecentActivity: async (req, res) => {
-    // (Esta función ya estaba perfecta, no se toca)
     try {
-      const recentCertificates = await RequestDeparture.find({ status: 'Pendiente' })
-        .sort({ createdAt: -1 })
-        .limit(3)
-        .populate('applicant', 'name lastName');
-      const recentMasses = await RequestMass.find({ status: 'Pendiente' })
-        .sort({ createdAt: -1 })
-        .limit(3)
-        .populate('applicant', 'name lastName');
+      const recentCertificates = await RequestDeparture.find({ status: 'Pendiente' }).sort({ createdAt: -1 }).limit(3).populate('applicant', 'name lastName');
+      const recentMasses = await RequestMass.find({ status: 'Pendiente' }).sort({ createdAt: -1 }).limit(3).populate('applicant', 'name lastName');
+
       const formattedCerts = recentCertificates.map(r => ({
         _id: r._id,
         type: 'partida',
@@ -66,6 +81,7 @@ module.exports = {
         applicantName: r.applicant ? `${r.applicant.name} ${r.applicant.lastName}` : 'Usuario eliminado',
         createdAt: r.createdAt
       }));
+
       const formattedMasses = recentMasses.map(r => ({
         _id: r._id,
         type: 'misa',
@@ -73,9 +89,11 @@ module.exports = {
         applicantName: r.applicant ? `${r.applicant.name} ${r.applicant.lastName}` : 'Usuario eliminado',
         createdAt: r.createdAt
       }));
+
       const combined = [...formattedCerts, ...formattedMasses]
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         .slice(0, 5);
+
       res.status(200).json(combined);
     } catch (error) {
       res.status(500).json({ message: "Error al cargar actividad reciente", error: error.message });
