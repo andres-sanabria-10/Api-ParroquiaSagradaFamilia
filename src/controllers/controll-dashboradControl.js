@@ -75,33 +75,49 @@ module.exports = {
     }
   },
 
-  // --- Endpoint para la Actividad Reciente (Sin cambios) ---
+  // --- Endpoint para la Actividad Reciente (MEJORADO) ---
   getRecentActivity: async (req, res) => {
     try {
-      const recentCertificates = await RequestDeparture.find({ status: 'Pendiente' }).sort({ createdAt: -1 }).limit(3).populate('applicant', 'name lastName');
-      const recentMasses = await RequestMass.find({ status: 'Pendiente' }).sort({ createdAt: -1 }).limit(3).populate('applicant', 'name lastName');
+      // 1. Obtener últimas 5 solicitudes de partidas (CUALQUIER ESTADO)
+      // Quitamos el filtro { status: 'Pendiente' }
+      const recentCertificates = await RequestDeparture.find()
+        .sort({ createdAt: -1 }) // Las más nuevas primero
+        .limit(5)
+        .populate('applicant', 'name lastName');
 
+      // 2. Obtener últimas 5 solicitudes de misas (CUALQUIER ESTADO)
+      // Quitamos el filtro { status: 'Pendiente' }
+      const recentMasses = await RequestMass.find()
+        .sort({ createdAt: -1 }) // Las más nuevas primero
+        .limit(5)
+        .populate('applicant', 'name lastName');
+
+      // 3. Mapear y combinar los datos
       const formattedCerts = recentCertificates.map(r => ({
         _id: r._id,
         type: 'partida',
-        description: `Solicitud de Partida de ${r.departureType}`,
+        // Agregamos el estado al texto para saber qué pasó
+        description: `Solicitud de ${r.departureType} (${r.status})`, 
         applicantName: r.applicant ? `${r.applicant.name} ${r.applicant.lastName}` : 'Usuario eliminado',
-        createdAt: r.createdAt // Aquí sí usamos createdAt si el modelo lo tiene (por timestamps: true), si no, cámbialo a requestDate
+        createdAt: r.createdAt
       }));
 
       const formattedMasses = recentMasses.map(r => ({
         _id: r._id,
         type: 'misa',
-        description: `Solicitud de Misa (${r.intention.substring(0, 20)}...)`,
+        // Agregamos el estado al texto
+        description: `Misa: ${r.intention.substring(0, 15)}... (${r.status})`, 
         applicantName: r.applicant ? `${r.applicant.name} ${r.applicant.lastName}` : 'Usuario eliminado',
         createdAt: r.createdAt
       }));
 
+      // 4. Combinar, ordenar por fecha real y tomar solo las 5 últimas de todo el grupo
       const combined = [...formattedCerts, ...formattedMasses]
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
         .slice(0, 5);
 
       res.status(200).json(combined);
+
     } catch (error) {
       res.status(500).json({ message: "Error al cargar actividad reciente", error: error.message });
     }
