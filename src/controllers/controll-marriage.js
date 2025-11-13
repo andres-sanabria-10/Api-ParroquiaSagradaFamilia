@@ -193,7 +193,7 @@ sendMarriageByEmail: async (req, res) => {
 
     // 3. Crear Pago Aprobado
     const amount = 20000; // OJO: Define el costo
-    const description = `Pago (en efectivo) por Partida de Matrimonio: ${marriage.husband.name} y ${marriage.wife.name}`;
+    const description = `Pago (en efectivo) por Partida de Matrimonio`;
     
     const newPayment = new Payment({
       userId: user._id,

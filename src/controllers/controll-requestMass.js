@@ -232,7 +232,7 @@ module.exports = {
 
           // 6. CREAR EL PAGO MANUALMENTE
           const amount = 25000; 
-          const description = `Pago (en efectivo) por Misa: ${intention.substring(0, 30)}...`;
+          const description = `Pago (en efectivo) por Misa`;
           const newPayment = new Payment({
             userId: user._id,
             serviceType: 'mass',

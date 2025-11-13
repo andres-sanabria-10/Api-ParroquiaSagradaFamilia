@@ -176,7 +176,7 @@ createDeath: async (req, res) => {
 
       // 3. Crear Pago Aprobado
       const amount = 20000; // OJO: Define el costo
-      const description = `Pago (en efectivo) por Partida de Defunción: ${user.name} ${user.lastName}`;
+      const description = `Pago (en efectivo) por Partida de Defunción`;
 
       const newPayment = new Payment({
         userId: user._id,

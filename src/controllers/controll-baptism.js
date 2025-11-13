@@ -87,7 +87,7 @@ module.exports = {
   
         // 3. Creamos el registro de Pago Aprobado
         const amount = 20000; // OJO: Define el costo
-        const description = `Pago (en efectivo) por Partida de Bautismo: ${user.name} ${user.lastName}`;
+        const description = `Pago (en efectivo) por Partida de Bautismo`;
   
         const newPayment = new Payment({
           userId: user._id,
