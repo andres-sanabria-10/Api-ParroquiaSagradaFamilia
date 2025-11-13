@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const {
     getDashboardStats,
-    getRecentActivity
+    getRecentActivity,
+    getUpcomingEvents
 } = require('../controllers/controll-dashboradControl');
 
 
@@ -12,4 +13,5 @@ router.get('/stats', getDashboardStats);
 // Ruta para el feed de actividad reciente
 router.get('/recent-activity', getRecentActivity);
 
+router.get('/upcoming-events', getUpcomingEvents);
 module.exports = router;

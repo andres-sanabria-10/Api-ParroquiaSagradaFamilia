@@ -121,5 +121,40 @@ module.exports = {
     } catch (error) {
       res.status(500).json({ message: "Error al cargar actividad reciente", error: error.message });
     }
-  }
+  },
+
+
+
+// --- ✨ NUEVA FUNCIÓN: Obtener Próximos Eventos (Misas) ---
+getUpcomingEvents: async (req, res) => {
+    try {
+      const today = startOfDay(new Date());
+
+      // Buscamos misas CONFIRMADAS desde hoy en adelante
+      const upcomingMasses = await RequestMass.find({
+        status: 'Confirmada',
+        date: { $gte: today }
+      })
+      .sort({ date: 1, time: 1 }) // Ordenar por fecha (más cercana primero)
+      .limit(5) // Traer solo las próximas 5
+      .populate('applicant', 'name lastName'); // Traer datos del solicitante
+
+      // Formateamos los datos para el frontend
+      const events = upcomingMasses.map(m => ({
+        _id: m._id,
+        title: "Misa Confirmada",
+        // Usamos la intención como descripción corta
+        description: m.intention.length > 30 ? m.intention.substring(0, 30) + '...' : m.intention,
+        date: m.date,
+        time: m.time,
+        applicant: m.applicant ? `${m.applicant.name} ${m.applicant.lastName}` : 'Anónimo'
+      }));
+
+      res.status(200).json(events);
+
+    } catch (error) {
+      res.status(500).json({ message: "Error al cargar próximos eventos", error: error.message });
+    }
+  }
+  
 };
