@@ -199,10 +199,12 @@ const createPayment = async (req, res) => {
         name: `${user.name} ${user.lastName}`.trim()
       };
 
+      // Incluir la referencia (invoice) en las back_urls para que el frontend
+      // reciba la referencia al volver desde Mercado Pago y pueda consultar el estado
       const back_urls = {
-        success: `${process.env.FRONTEND_URL}/payment/response`,
-        failure: `${process.env.FRONTEND_URL}/payment/response`,
-        pending: `${process.env.FRONTEND_URL}/payment/response`
+        success: `${process.env.FRONTEND_URL}/payment/response?invoice=${referenceCode}`,
+        failure: `${process.env.FRONTEND_URL}/payment/response?invoice=${referenceCode}`,
+        pending: `${process.env.FRONTEND_URL}/payment/response?invoice=${referenceCode}`
       };
 
       const preference = await mercadoPagoService.createPreference({
