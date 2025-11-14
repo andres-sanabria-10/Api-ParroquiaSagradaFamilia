@@ -36,7 +36,7 @@ router.post('/clean-expired', checkAuth, checkRoleAuth(['admin']), async (req, r
   }
 });
 
-// 🌐 Ruta pública (webhook de ePayco - NO requiere autenticación)
+// 🌐 Ruta pública (webhook de Mercado Pago - NO requiere autenticación)
 router.post('/confirm', confirmPayment);
 
 router.post('/admin-cash-payment', adminCreateCashPayment);
