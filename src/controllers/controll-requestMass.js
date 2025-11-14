@@ -249,13 +249,13 @@ module.exports = {
                       email: user.mail,
                       documentNumber: user.documentNumber,
                     },
-                    epaycoData: {
-                      franchise: 'Efectivo (Admin)',
-                      bank: 'Caja Parroquial',
-                      responseMessage: 'Aprobada (Registro Manual)',
-                      authorization: 'ADMIN-MANUAL', // Ya no depende de req.user
-                      transactionDate: new Date(),
-                    },
+                                        gatewayData: {
+                                            franchise: 'Efectivo (Admin)',
+                                            bank: 'Caja Parroquial',
+                                            responseMessage: 'Aprobada (Registro Manual)',
+                                            authorization: 'ADMIN-MANUAL', // Ya no depende de req.user
+                                            transactionDate: new Date(),
+                                        },
                   });
                   
                   await newPayment.save();

@@ -37,37 +37,31 @@ const paymentSchema = new mongoose.Schema({
     unique: true,
     index: true,
   },
-  // 🔑 Referencia de ePayco (x_ref_payco)
-  epaycoReference: {
-    type: String,
-    sparse: true,
-    index: true,
-  },
-  // 🔑 ID de transacción de ePayco
+  // 🔑 ID de transacción del gateway de pago
   transactionId: {
     type: String,
     sparse: true,
     index: true,
   },
+  // Referencia genérica al gateway de pagos (ej: preference id de Mercado Pago)
+  gatewayReference: {
+    type: String,
+    sparse: true,
+    index: true,
+  },
+  // Datos crudos devueltos por el gateway (traza / debugging)
+  gatewayData: {
+    type: Object,
+  },
   paymentMethod: {
     type: String,
-    default: 'epayco',
+    default: 'mercadopago',
   },
   status: {
     type: String,
     required: true,
     enum: ['pending', 'approved', 'rejected', 'failed', 'expired'], // ✅ Ya tienes 'expired'
     default: 'pending',
-  },
-  // 📋 Información detallada de ePayco
-  epaycoData: {
-    franchise: String,       // Visa, Mastercard, etc.
-    bank: String,           // Banco emisor
-    receipt: String,        // Recibo
-    authorization: String,  // Código de autorización
-    responseCode: String,   // Código de respuesta (1=aprobado, 2=rechazado, etc.)
-    responseMessage: String, // Mensaje de respuesta
-    transactionDate: Date,  // Fecha de la transacción
   },
   description: {
     type: String,

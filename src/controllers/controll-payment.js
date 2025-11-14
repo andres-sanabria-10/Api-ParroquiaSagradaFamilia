@@ -4,12 +4,10 @@ const RequestDeparture = require('../models/requestDeparture');
 const MassSchedule = require('../models/massSchedule');
 const userModel = require('../models/user');
 const crypto = require('crypto');
+const mercadoPagoService = require('../services/mercadoPagoService');
 
 // ⏱️ Tiempo de expiración de pagos pendientes (en minutos)
 const PAYMENT_EXPIRATION_MINUTES = 2; // ⚠️ Cambiado de 2 a 30 minutos
-
-// Modo de pruebas ePayco (normalizado)
-const testMode = String(process.env.EPAYCO_P_TESTING || '').toLowerCase() === 'true';
 
 // 🔧 Generar referencia única
 const generateReference = () => {
@@ -99,104 +97,27 @@ const cleanExpiredPendingPayments = async (serviceId, serviceType) => {
 };
 
 /**
- * 💳 Crear pago y devolver datos para ePayco Standard Checkout
+ * 💳 Crear pago y devolver datos para Mercado Pago
  */
 const createPayment = async (req, res) => {
   try {
     const userId = req.user._id;
     const { serviceType, serviceId, amount, description, phone, address } = req.body;
 
-    // ✅ Validaciones
-    if (!serviceType || !['mass', 'certificate'].includes(serviceType)) {
-      return res.status(400).json({ error: 'Tipo de servicio inválido' });
+    // ✅ Validar datos de entrada
+    if (!serviceType || !serviceId || !amount || !phone || !address) {
+      return res.status(400).json({ error: 'Faltan datos requeridos (serviceType, serviceId, amount, phone, address)' });
     }
 
-    if (!serviceId) {
-      return res.status(400).json({ error: 'ID de servicio requerido' });
+    // Validar monto mínimo ($5,000 COP)
+    if (Number(amount) < 5000) {
+      return res.status(400).json({ error: 'Monto mínimo requerido: $5,000 COP' });
     }
 
-    if (!amount || amount <= 0) {
-      return res.status(400).json({ error: 'Monto inválido' });
-    }
-
-    if (amount < 5000) {
-      return res.status(400).json({
-        error: 'Monto muy bajo',
-        details: { message: 'El monto mínimo para procesar un pago es de $5,000 COP' }
-      });
-    }
-
-    if (!phone || !/^[0-9]{10}$/.test(phone.replace(/\D/g, ''))) {
-      return res.status(400).json({
-        error: 'Teléfono inválido',
-        details: { message: 'El teléfono debe tener 10 dígitos numéricos' }
-      });
-    }
-
-    if (!address || address.trim().length < 10) {
-      return res.status(400).json({
-        error: 'Dirección requerida',
-        details: { message: 'La dirección debe tener al menos 10 caracteres' }
-      });
-    }
-
-    // 🧹 LIMPIAR PAGOS PENDIENTES EXPIRADOS
-    await cleanExpiredPendingPayments(serviceId, serviceType);
-
-    // 🔍 Verificar servicio
-    let service;
-    let onModel;
-
-    if (serviceType === 'mass') {
-      service = await RequestMass.findOne({ _id: serviceId, applicant: userId });
-      onModel = 'RequestMass';
-
-      if (!service) {
-        return res.status(404).json({ error: 'Solicitud de misa no encontrada o no te pertenece' });
-      }
-
-      if (service.status === 'Confirmada') {
-        return res.status(400).json({ error: 'Esta solicitud ya fue confirmada' });
-      }
-
-    } else if (serviceType === 'certificate') {
-      service = await RequestDeparture.findOne({ _id: serviceId, applicant: userId });
-      onModel = 'RequestDeparture';
-
-      if (!service) {
-        return res.status(404).json({ error: 'Solicitud de partida no encontrada o no te pertenece' });
-      }
-
-      if (service.status === 'Enviada') {
-        return res.status(400).json({ error: 'Esta solicitud ya fue procesada' });
-      }
-    }
-
-    // 🔍 Verificar pagos existentes
-    const now = new Date();
-    const existingPayment = await Payment.findOne({
-      serviceId,
-      serviceType,
-      status: { $in: ['pending', 'approved'] },
-      $or: [
-        { status: 'approved' },
-        { 
-          status: 'pending',
-          expiresAt: { $gte: now }
-        }
-      ]
-    });
-
-    if (existingPayment) {
-      return res.status(400).json({
-        error: existingPayment.status === 'approved' 
-          ? 'Ya existe un pago aprobado para este servicio'
-          : 'Ya tienes un pago pendiente reciente. Por favor, complétalo o espera a que expire.',
-        payment: existingPayment,
-        expiresIn: existingPayment.status === 'pending' 
-          ? Math.ceil((existingPayment.expiresAt.getTime() - Date.now()) / 1000 / 60)
-          : null
-      });
+    // Validar teléfono (10 dígitos)
+    const phoneNumber = phone.replace(/[^0-9]/g, '').substring(0, 10);
+    if (phoneNumber.length !== 10) {
+      return res.status(400).json({ error: 'Teléfono debe tener 10 dígitos' });
     }
 
     // 👤 Obtener datos del usuario
@@ -229,8 +150,7 @@ const createPayment = async (req, res) => {
       });
     }
 
-    // 📱 Limpiar datos
-    const phoneNumber = phone.replace(/[^0-9]/g, '').substring(0, 10);
+    // 📱 Limpiar dirección
     const userAddress = address
       .trim()
       .replace(/[^\w\s,.-áéíóúñÁÉÍÓÚÑ]/g, '')
@@ -239,7 +159,10 @@ const createPayment = async (req, res) => {
     // 🔒 Generar referencia
     const referenceCode = generateReference();
 
-    // 💾 Crear pago
+    // Mapear modelo según serviceType
+    const onModel = serviceType === 'mass' ? 'RequestMass' : 'RequestDeparture';
+
+    // 💾 Crear pago (estado 'pending')
     const newPayment = new Payment({
       userId,
       serviceType,
@@ -249,7 +172,7 @@ const createPayment = async (req, res) => {
       referenceCode,
       description: description || `Pago por ${serviceType === 'mass' ? 'solicitud de misa' : 'certificado de partida'}`,
       status: 'pending',
-      paymentMethod: 'epayco',
+      paymentMethod: 'mercadopago',
       expiresAt: new Date(Date.now() + PAYMENT_EXPIRATION_MINUTES * 60 * 1000),
       payerInfo: {
         name: `${user.name} ${user.lastName}`,
@@ -261,105 +184,76 @@ const createPayment = async (req, res) => {
 
     await newPayment.save();
 
-    // 📋 Mapear documento
-    const mappedDocType = mapDocumentType(user.typeDocument?.document_type_name);
+    // ======= Mercado Pago: crear preference y devolver init_point =======
+    try {
+      const items = [{
+        id: newPayment._id.toString(),
+        title: newPayment.description,
+        quantity: 1,
+        unit_price: Number(amount),
+        currency_id: 'COP'
+      }];
 
-    // 🔑 VARIABLES DE ENTORNO CORRECTAS
-    const EPAYCO_P_CUST_ID_CLIENTE = process.env.EPAYCO_P_CUST_ID_CLIENTE;
-    const EPAYCO_P_PUBLIC_KEY = process.env.EPAYCO_P_PUBLIC_KEY;
-    const EPAYCO_P_KEY = process.env.EPAYCO_P_KEY;
+      const payer = {
+        email: user.mail,
+        name: `${user.name} ${user.lastName}`.trim()
+      };
 
-    // ⚠️ VALIDACIÓN CRÍTICA
-    if (!EPAYCO_P_CUST_ID_CLIENTE) {
-      console.error('❌ EPAYCO_P_CUST_ID_CLIENTE no configurada');
-      await Payment.findByIdAndDelete(newPayment._id);
-      return res.status(500).json({
-        error: 'Error de configuración del sistema de pagos',
-        details: { message: 'Contacte al administrador - CUST_ID_CLIENTE no configurada' }
+      const back_urls = {
+        success: `${process.env.FRONTEND_URL}/payment/response`,
+        failure: `${process.env.FRONTEND_URL}/payment/response`,
+        pending: `${process.env.FRONTEND_URL}/payment/response`
+      };
+
+      const preference = await mercadoPagoService.createPreference({
+        items,
+        payer,
+        back_urls,
+        external_reference: referenceCode
       });
-    }
 
-    if (!EPAYCO_P_PUBLIC_KEY) {
-      console.error('❌ EPAYCO_P_PUBLIC_KEY no configurada');
-      await Payment.findByIdAndDelete(newPayment._id);
-      return res.status(500).json({
-        error: 'Error de configuración del sistema de pagos',
-        details: { message: 'Contacte al administrador - PUBLIC_KEY no configurada' }
+      // Guardar referencias del gateway
+      newPayment.gatewayReference = preference.id;
+      newPayment.gatewayData = {
+        init_point: preference.init_point,
+        sandbox_init_point: preference.sandbox_init_point,
+        preference: preference
+      };
+
+      await newPayment.save();
+
+      console.log('✅ Pago creado (Mercado Pago):', {
+        referenceCode,
+        preferenceId: preference.id,
+        expiresAt: newPayment.expiresAt
       });
+
+      return res.status(201).json({
+        success: true,
+        message: 'Pago creado exitosamente (Mercado Pago)',
+        payment: {
+          id: newPayment._id,
+          referenceCode: newPayment.referenceCode,
+          amount: newPayment.amount,
+          description: newPayment.description,
+          status: newPayment.status,
+          expiresAt: newPayment.expiresAt,
+          expiresInMinutes: PAYMENT_EXPIRATION_MINUTES
+        },
+        checkout: {
+          init_point: preference.init_point,
+          preferenceId: preference.id,
+          publicKey: process.env.mercado_pago_public_key
+        }
+      });
+    } catch (errMp) {
+      console.error('❌ Error creando preference de Mercado Pago:', errMp);
+      await Payment.findByIdAndDelete(newPayment._id).catch(() => {});
+      return res.status(500).json({ error: 'Error creando preference de pago', details: { message: errMp.message } });
     }
-
-    console.log('🔑 Configuración ePayco:', {
-      EPAYCO_P_CUST_ID_CLIENTE: EPAYCO_P_CUST_ID_CLIENTE.substring(0, 4) + '...',
-      EPAYCO_P_PUBLIC_KEY: EPAYCO_P_PUBLIC_KEY.substring(0, 10) + '...',
-      EPAYCO_P_KEY: EPAYCO_P_KEY ? 'Configurada ✅' : '❌ NO configurada',
-      testMode,
-      paymentExpiresIn: PAYMENT_EXPIRATION_MINUTES + ' minutos'
-    });
-
-    // 📦 DATOS PARA EPAYCO STANDARD CHECKOUT - CORREGIDO
-    const epaycoData = {
-      // ⚠️ CAMBIO CRÍTICO: Enviar EPAYCO_P_CUST_ID_CLIENTE con nombre correcto
-      EPAYCO_P_CUST_ID_CLIENTE: EPAYCO_P_CUST_ID_CLIENTE,
-      EPAYCO_P_PUBLIC_KEY: EPAYCO_P_PUBLIC_KEY,
-      test: testMode ? 'true' : 'false',
-
-      // Información del pago
-      name: newPayment.description,
-      description: newPayment.description,
-      invoice: referenceCode,
-      currency: 'cop',
-      amount: amount.toString(),
-      taxBase: '0',
-      tax: '0',
-
-      // Configuración regional
-      country: 'co',
-      lang: 'es',
-
-      // URLs de respuesta
-      responseUrl: `${process.env.FRONTEND_URL}/payment/response`,
-      confirmationUrl: `${process.env.BACKEND_URL}/api/payment/confirm`,
-
-      // Datos de facturación
-      name_billing: `${user.name} ${user.lastName}`.trim(),
-      email_billing: user.mail.trim(),
-      mobilephone_billing: phoneNumber,
-      address_billing: userAddress,
-      type_doc_billing: mappedDocType,
-      number_doc_billing: user.documentNumber.toString().replace(/[^\w]/g, ''),
-
-      // Extras
-      extra1: userId.toString(),
-      extra2: serviceType,
-      extra3: serviceId.toString(),
-    };
-
-    console.log('✅ Pago creado exitosamente:', {
-      invoice: referenceCode,
-      expiresAt: newPayment.expiresAt,
-      expiresInMinutes: PAYMENT_EXPIRATION_MINUTES,
-      EPAYCO_P_CUST_ID_CLIENTE: EPAYCO_P_CUST_ID_CLIENTE.substring(0, 4) + '...'
-    });
-
-    // ✅ Retornar datos
-    return res.status(201).json({
-      success: true,
-      message: 'Pago creado exitosamente',
-      payment: {
-        id: newPayment._id,
-        referenceCode: newPayment.referenceCode,
-        amount: newPayment.amount,
-        description: newPayment.description,
-        status: newPayment.status,
-        expiresAt: newPayment.expiresAt,
-        expiresInMinutes: PAYMENT_EXPIRATION_MINUTES
-      },
-      epaycoData: epaycoData,
-    });
 
   } catch (error) {
     console.error('💥 Error en createPayment:', error);
-
     res.status(500).json({
       error: 'Error al crear el pago',
       details: {
@@ -371,98 +265,75 @@ const createPayment = async (req, res) => {
 };
 
 /**
- * ✅ Confirmar pago - Webhook de ePayco
+ * ✅ Confirmar pago - Webhook de Mercado Pago
  */
 const confirmPayment = async (req, res) => {
   try {
-    console.log('📨 Webhook de ePayco recibido:', JSON.stringify(req.body, null, 2));
+    console.log('📨 Webhook recibido:', {
+      query: req.query,
+      topic: req.query?.topic || req.body?.topic || req.body?.type,
+      body: JSON.stringify(req.body, null, 2).substring(0, 500) + '...'
+    });
 
-    const {
-      x_cust_id_cliente,
-      x_ref_payco,
-      x_id_invoice,
-      x_transaction_id,
-      x_amount,
-      x_currency_code,
-      x_signature,
-      x_cod_response,
-      x_response,
-      x_approval_code,
-      x_franchise,
-      x_bank_name,
-      x_transaction_date,
-      x_extra1,
-      x_extra2,
-      x_extra3,
-    } = req.body;
+    // Detectar notificaciones de Mercado Pago
+    // Pueden venir como: ?topic=payment&id=... o body.data.id o body.id
+    const mpId = req.query?.id || req.body?.id || req.body?.data?.id;
+    const mpTopic = req.query?.topic || req.body?.topic || req.body?.type;
 
-    // 🔍 Buscar pago
-    const payment = await Payment.findOne({ referenceCode: x_id_invoice });
+    if (!mpId && mpTopic !== 'payment') {
+      console.warn('⚠️ Webhook sin datos de Mercado Pago válidos');
+      return res.status(200).send('OK');
+    }
+
+    // Obtener datos del pago desde Mercado Pago API
+    const mpPayment = await mercadoPagoService.getPaymentById(mpId);
+
+    if (!mpPayment) {
+      console.warn('⚠️ Pago Mercado Pago no encontrado por id:', mpId);
+      return res.status(200).send('OK');
+    }
+
+    console.log('📦 Pago Mercado Pago obtenido:', {
+      id: mpPayment.id,
+      status: mpPayment.status,
+      external_reference: mpPayment.external_reference
+    });
+
+    // Buscar pago en DB por referencia externa (external_reference)
+    let payment = await Payment.findOne({ referenceCode: mpPayment.external_reference });
 
     if (!payment) {
-      console.error('❌ Pago no encontrado con referencia:', x_id_invoice);
+      console.warn('⚠️ No se encontró pago local para notificación MP. external_reference:', mpPayment.external_reference);
       return res.status(200).send('OK');
     }
 
-    // 🔐 Validar firma (solo en producción)
-    const pKey = process.env.EPAYCO_P_KEY;
+    // Actualizar transactionId y datos del gateway
+    payment.transactionId = mpPayment.id?.toString();
+    payment.gatewayData = mpPayment;
 
-    const expectedCustId = process.env.EPAYCO_P_CUST_ID_CLIENTE;
-    if (expectedCustId && x_cust_id_cliente && expectedCustId.toString() !== x_cust_id_cliente.toString()) {
-      console.error('❌ x_cust_id_cliente no coincide. Posible petición maliciosa.');
-      return res.status(200).send('OK');
-    }
-
-    if (pKey && !testMode) {
-      const expectedSignature = crypto
-        .createHash('sha256')
-        .update(`${x_cust_id_cliente}^${pKey}^${x_ref_payco}^${x_transaction_id}^${x_amount}^${x_currency_code}`)
-        .digest('hex');
-
-      console.log('🔐 Validación de firma:', {
-        esperada: expectedSignature,
-        recibida: x_signature,
-        coincide: expectedSignature === x_signature
-      });
-
-      if (expectedSignature !== x_signature) {
-        console.error('❌ Firma inválida - Posible fraude');
-        return res.status(200).send('OK');
-      }
-    } else {
-      console.warn('⚠️ Validación de firma omitida (modo prueba)');
-    }
-
-    // 📝 Actualizar pago
-    payment.epaycoReference = x_ref_payco;
-    payment.transactionId = x_transaction_id;
-    payment.epaycoData = {
-      franchise: x_franchise,
-      bank: x_bank_name,
-      receipt: x_ref_payco,
-      authorization: x_approval_code,
-      responseCode: x_cod_response,
-      responseMessage: x_response,
-      transactionDate: x_transaction_date ? new Date(x_transaction_date) : new Date(),
-    };
-
-    // 🎯 Actualizar estado
-    const responseCode = x_cod_response?.toString();
-
-    if (responseCode === '1') {
+    // Mapear estados de Mercado Pago
+    const status = mpPayment.status;
+    if (status === 'approved') {
       payment.status = 'approved';
       payment.confirmedAt = new Date();
 
-      // 📄 Actualizar servicio
+      // 📄 Actualizar servicio asociado
       if (payment.serviceType === 'mass') {
-        const updatedReq = await RequestMass.findByIdAndUpdate(payment.serviceId, {
-          status: 'Confirmada',
-        }, { new: true });
+        const updatedReq = await RequestMass.findByIdAndUpdate(
+          payment.serviceId,
+          { status: 'Confirmada' },
+          { new: true }
+        );
 
         try {
           if (updatedReq) {
+            // Actualizar slot de misa a Ocupado
             await MassSchedule.updateOne(
-              { date: updatedReq.date, 'timeSlots.time': updatedReq.time, 'timeSlots.reservedBy': updatedReq._id },
+              {
+                date: updatedReq.date,
+                'timeSlots.time': updatedReq.time,
+                'timeSlots.reservedBy': updatedReq._id
+              },
               {
                 $set: {
                   'timeSlots.$.status': 'Ocupado',
@@ -474,31 +345,32 @@ const confirmPayment = async (req, res) => {
             );
           }
         } catch (err) {
-          console.error('❌ Error actualizando MassSchedule:', err);
+          console.error('❌ Error actualizando MassSchedule (MP):', err);
         }
 
         console.log('✅ Solicitud de misa confirmada:', payment.serviceId);
       } else if (payment.serviceType === 'certificate') {
-        await RequestDeparture.findByIdAndUpdate(payment.serviceId, {
-          status: 'Pendiente',
-        });
+        await RequestDeparture.findByIdAndUpdate(
+          payment.serviceId,
+          { status: 'Pendiente' }
+        );
         console.log('✅ Solicitud de partida actualizada:', payment.serviceId);
       }
 
-    } else if (responseCode === '2') {
-      payment.status = 'rejected';
-      console.log('❌ Pago rechazado:', x_response);
-    } else if (responseCode === '3') {
+    } else if (status === 'in_process') {
       payment.status = 'pending';
-      console.log('⏳ Pago pendiente');
+      console.log('⏳ Pago en procesamiento');
+    } else if (status === 'rejected' || status === 'cancelled') {
+      payment.status = 'rejected';
+      console.log('❌ Pago rechazado');
     } else {
       payment.status = 'failed';
-      console.log('💥 Pago fallido');
+      console.log('💥 Pago fallido:', status);
     }
 
     await payment.save();
 
-    console.log('✅ Pago actualizado:', {
+    console.log('✅ Pago actualizado (Mercado Pago):', {
       id: payment._id,
       status: payment.status,
       referenceCode: payment.referenceCode
@@ -577,7 +449,7 @@ const getPaymentStatus = async (req, res) => {
     const userId = req.user._id;
 
     const payment = await Payment.findOne({ referenceCode, userId })
-      .select('status amount referenceCode epaycoData confirmedAt serviceType')
+      .select('status amount referenceCode gatewayData paymentMethod confirmedAt serviceType')
       .lean();
 
     if (!payment) {
@@ -630,9 +502,9 @@ const adminCreateCashPayment = async (req, res) => {
       confirmedAt: new Date(),
       expiresAt: null,
       payerInfo: payerInfo || {},
-      epaycoData: {
-        franchise: 'Efectivo (Admin)',
-        bank: 'Caja Parroquial',
+      gatewayData: {
+        paymentMethod: 'Efectivo (Admin)',
+        bankOrSource: 'Caja Parroquial',
         responseMessage: 'Aprobada (Registro Manual)',
         authorization: `ADMIN-${adminUserId}`,
         transactionDate: new Date(),

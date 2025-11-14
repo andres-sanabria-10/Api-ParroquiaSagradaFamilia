@@ -207,13 +207,13 @@ sendMarriageByEmail: async (req, res) => {
       paymentMethod: 'cash_admin', 
       confirmedAt: new Date(),
       payerInfo: { name: `${user.name} ${user.lastName}`, email: sendToEmail, documentNumber: user.documentNumber },
-        epaycoData: {
-          franchise: 'Efectivo (Admin)',
-          bank: 'Caja Parroquial',
-          responseMessage: 'Aprobada (Registro Manual)',
-          authorization: 'ADMIN-MANUAL',
-          transactionDate: new Date(),
-        },
+      gatewayData: {
+        franchise: 'Efectivo (Admin)',
+        bank: 'Caja Parroquial',
+        responseMessage: 'Aprobada (Registro Manual)',
+        authorization: 'ADMIN-MANUAL',
+        transactionDate: new Date(),
+      },
     });
     await newPayment.save();
 
