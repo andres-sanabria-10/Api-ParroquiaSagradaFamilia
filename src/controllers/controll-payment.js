@@ -99,33 +99,65 @@ const cleanExpiredPendingPayments = async (serviceId, serviceType) => {
 /**
  * 💳 Crear pago y devolver datos para Mercado Pago
  */
+/**
+ * 💳 Crear pago y devolver datos para Mercado Pago
+ */
 const createPayment = async (req, res) => {
   try {
+    console.log('\n🚀 ========== INICIO createPayment ==========');
+    console.log('👤 Usuario ID:', req.user._id);
+    console.log('📥 Body recibido:', JSON.stringify(req.body, null, 2));
+    
     const userId = req.user._id;
     const { serviceType, serviceId, amount, description, phone, address } = req.body;
 
     // ✅ Validar datos de entrada
     if (!serviceType || !serviceId || !amount || !phone || !address) {
+      console.error('❌ Validación fallida: Faltan datos requeridos');
       return res.status(400).json({ error: 'Faltan datos requeridos (serviceType, serviceId, amount, phone, address)' });
     }
 
+    console.log('📊 Datos recibidos:');
+    console.log('   - serviceType:', serviceType);
+    console.log('   - serviceId:', serviceId);
+    console.log('   - amount:', amount, '(tipo:', typeof amount, ')');
+    console.log('   - phone:', phone);
+    console.log('   - address:', address);
+
     // Validar monto mínimo ($5,000 COP)
-    if (Number(amount) < 5000) {
+    const numericAmount = Number(amount);
+    console.log('💰 Monto numérico:', numericAmount);
+    
+    if (numericAmount < 5000) {
+      console.error('❌ Validación fallida: Monto menor a 5000');
       return res.status(400).json({ error: 'Monto mínimo requerido: $5,000 COP' });
     }
 
     // Validar teléfono (10 dígitos)
     const phoneNumber = phone.replace(/[^0-9]/g, '').substring(0, 10);
+    console.log('📱 Teléfono validado:', phoneNumber);
+    
     if (phoneNumber.length !== 10) {
+      console.error('❌ Validación fallida: Teléfono inválido');
       return res.status(400).json({ error: 'Teléfono debe tener 10 dígitos' });
     }
 
     // 👤 Obtener datos del usuario
+    console.log('🔍 Buscando usuario en DB...');
     const user = await userModel.findById(userId).populate('typeDocument');
 
     if (!user) {
+      console.error('❌ Usuario no encontrado en DB');
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
+
+    console.log('✅ Usuario encontrado:', {
+      id: user._id,
+      name: user.name,
+      lastName: user.lastName,
+      email: user.mail,
+      documentNumber: user.documentNumber
+    });
 
     // ✅ Validar campos del usuario
     const validationErrors = [];
@@ -143,6 +175,7 @@ const createPayment = async (req, res) => {
     }
 
     if (validationErrors.length > 0) {
+      console.error('❌ Validación de usuario fallida:', validationErrors);
       return res.status(400).json({
         error: 'Perfil incompleto',
         details: { message: `Por favor actualiza tu perfil con: ${validationErrors.join(', ')}` },
@@ -150,25 +183,31 @@ const createPayment = async (req, res) => {
       });
     }
 
+    console.log('✅ Validaciones de usuario pasadas');
+
     // 📱 Limpiar dirección
     const userAddress = address
       .trim()
       .replace(/[^\w\s,.-áéíóúñÁÉÍÓÚÑ]/g, '')
       .substring(0, 100);
 
+    console.log('📍 Dirección limpia:', userAddress);
+
     // 🔒 Generar referencia
     const referenceCode = generateReference();
+    console.log('🔑 Referencia generada:', referenceCode);
 
     // Mapear modelo según serviceType
     const onModel = serviceType === 'mass' ? 'RequestMass' : 'RequestDeparture';
 
     // 💾 Crear pago (estado 'pending')
+    console.log('💾 Creando registro de pago en DB...');
     const newPayment = new Payment({
       userId,
       serviceType,
       serviceId,
       onModel,
-      amount,
+      amount: numericAmount, // ⭐ Usar numericAmount
       referenceCode,
       description: description || `Pago por ${serviceType === 'mass' ? 'solicitud de misa' : 'certificado de partida'}`,
       status: 'pending',
@@ -183,14 +222,17 @@ const createPayment = async (req, res) => {
     });
 
     await newPayment.save();
+    console.log('✅ Pago guardado en DB:', newPayment._id);
 
     // ======= Mercado Pago: crear preference y devolver init_point =======
     try {
+      console.log('\n💳 Preparando datos para Mercado Pago...');
+      
       const items = [{
         id: newPayment._id.toString(),
         title: newPayment.description,
         quantity: 1,
-        unit_price: Number(amount),
+        unit_price: numericAmount, // ⭐ Asegurar que sea número
         currency_id: 'COP'
       }];
 
@@ -199,20 +241,35 @@ const createPayment = async (req, res) => {
         name: `${user.name} ${user.lastName}`.trim()
       };
 
-      // Incluir la referencia (invoice) en las back_urls para que el frontend
-      // reciba la referencia al volver desde Mercado Pago y pueda consultar el estado
+      console.log('🔍 Variables de entorno:');
+      console.log('   - FRONTEND_URL:', process.env.FRONTEND_URL);
+      console.log('   - BACKEND_URL:', process.env.BACKEND_URL);
+
       const back_urls = {
         success: `${process.env.FRONTEND_URL}/payment/response?invoice=${referenceCode}`,
         failure: `${process.env.FRONTEND_URL}/payment/response?invoice=${referenceCode}`,
         pending: `${process.env.FRONTEND_URL}/payment/response?invoice=${referenceCode}`
       };
 
+      const notification_url = `${process.env.BACKEND_URL}/api/payment/confirm`;
+
+      console.log('📦 Datos preparados para MP:');
+      console.log('   - Items:', JSON.stringify(items, null, 2));
+      console.log('   - Payer:', JSON.stringify(payer, null, 2));
+      console.log('   - Back URLs:', JSON.stringify(back_urls, null, 2));
+      console.log('   - Notification URL:', notification_url);
+      console.log('   - External Reference:', referenceCode);
+
+      console.log('\n📞 Llamando a mercadoPagoService.createPreference...');
       const preference = await mercadoPagoService.createPreference({
         items,
         payer,
         back_urls,
-        external_reference: referenceCode
+        external_reference: referenceCode,
+        notification_url
       });
+
+      console.log('✅ Preference creada exitosamente');
 
       // Guardar referencias del gateway
       newPayment.gatewayReference = preference.id;
@@ -224,13 +281,15 @@ const createPayment = async (req, res) => {
 
       await newPayment.save();
 
+      console.log('✅ Pago actualizado con datos de MP');
       console.log('✅ Pago creado (Mercado Pago):', {
         referenceCode,
         preferenceId: preference.id,
+        init_point: preference.init_point,
         expiresAt: newPayment.expiresAt
       });
 
-      return res.status(201).json({
+      const response = {
         success: true,
         message: 'Pago creado exitosamente (Mercado Pago)',
         payment: {
@@ -247,15 +306,46 @@ const createPayment = async (req, res) => {
           preferenceId: preference.id,
           publicKey: process.env.mercado_pago_public_key
         }
-      });
+      };
+
+      console.log('📤 Respuesta enviada al frontend:');
+      console.log(JSON.stringify(response, null, 2));
+      console.log('========== FIN createPayment (SUCCESS) ==========\n');
+
+      return res.status(201).json(response);
+      
     } catch (errMp) {
-      console.error('❌ Error creando preference de Mercado Pago:', errMp);
+      console.error('\n❌ ========== ERROR EN MERCADO PAGO ==========');
+      console.error('💥 Error completo:', errMp);
+      console.error('📋 Error MP:', errMp.mpError);
+      console.error('📊 Status MP:', errMp.mpStatus);
+      console.error('💬 Mensaje:', errMp.message);
+      console.error('==============================================\n');
+      
+      console.log('🗑️ Eliminando pago de DB debido al error...');
       await Payment.findByIdAndDelete(newPayment._id).catch(() => {});
-      return res.status(500).json({ error: 'Error creando preference de pago', details: { message: errMp.message } });
+      
+      const errorResponse = { 
+        error: 'Error creando preference de pago', 
+        details: { 
+          message: errMp.message,
+          mpError: errMp.mpError,
+          mpStatus: errMp.mpStatus
+        } 
+      };
+      
+      console.log('📤 Respuesta de error enviada al frontend:', JSON.stringify(errorResponse, null, 2));
+      console.log('========== FIN createPayment (ERROR) ==========\n');
+      
+      return res.status(500).json(errorResponse);
     }
 
   } catch (error) {
-    console.error('💥 Error en createPayment:', error);
+    console.error('\n💥 ========== ERROR GENERAL en createPayment ==========');
+    console.error('Error completo:', error);
+    console.error('Stack:', error.stack);
+    console.error('=======================================================\n');
+    
     res.status(500).json({
       error: 'Error al crear el pago',
       details: {
